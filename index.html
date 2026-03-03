@@ -18,7 +18,7 @@
 
   /* HEADER */
   .header { background:linear-gradient(135deg,var(--brown) 0%,#2c1a08 100%); padding:28px 20px 20px; text-align:center; position:relative; overflow:hidden; }
-  .header::before { content:'✝'; position:absolute; font-size:200px; color:rgba(255,255,255,.03); top:-30px; left:50%; transform:translateX(-50%); pointer-events:none; }
+  .header::before { content:''; position:absolute; font-size:200px; color:rgba(255,255,255,.03); top:-30px; left:50%; transform:translateX(-50%); pointer-events:none; }
   .header-icon { font-size:30px; margin-bottom:6px; display:block; }
   .header h1 { font-family:'Playfair Display',serif; color:var(--gold-light); font-size:clamp(1.2rem,4vw,1.7rem); letter-spacing:.5px; line-height:1.3; }
   .header p { color:rgba(255,255,255,.5); font-size:.8rem; margin-top:5px; font-weight:300; letter-spacing:1px; text-transform:uppercase; }
@@ -294,7 +294,7 @@
 
 <!-- HEADER -->
 <div class="header">
-  <span class="header-icon">✝️</span>
+  <span class="header-icon"><svg viewBox="0 0 40 40" width="36" height="36" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="16" y="2" width="8" height="36" rx="3" fill="#f0d98a"/><rect x="4" y="12" width="32" height="8" rx="3" fill="#f0d98a"/></svg></span>
   <h1 id="header-title">Crisma 2026 &mdash; <span id="header-etapa">1&ordf; Etapa</span></h1>
   <p>Catequistas Vit&oacute;ria &amp; Stefani &middot; Par&oacute;quia Maria M&atilde;e</p>
   <div class="gold-line"></div>
@@ -338,7 +338,7 @@
       <button class="turma-pill" id="pill-1" onclick="setTurma(1)"><span class="dot dot-t1"></span> Turma 1</button>
       <button class="turma-pill" id="pill-2" onclick="setTurma(2)"><span class="dot dot-t2"></span> Turma 2</button>
     </div>
-    <div class="stats">Exibindo <span id="count">43</span> de 43</div>
+    <div class="stats">Exibindo <span id="count">0</span> de <span id="total">0</span></div>
     <button class="btn btn-msg" onclick="openMsgModal()">
       <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
       Mensagem
@@ -23412,7 +23412,15 @@ async function loadAllStorage() {
   // First load from localStorage for instant UI
   try {
     const sd = localStorage.getItem(SK_DATA);
-    if (sd) { const p = JSON.parse(sd); if (p && p.length >= data.length) p.forEach((d,i) => { if (data[i]) Object.assign(data[i], d); else data.push(d); }); }
+    if (sd) {
+      const p = JSON.parse(sd);
+      // Merge by nome to handle additions from any device
+      p.forEach(d => {
+        const existing = data.findIndex(x => x.nome === d.nome);
+        if (existing >= 0) Object.assign(data[existing], d);
+        else data.push(d);
+      });
+    }
     const sm = localStorage.getItem(SK_MSG); if (sm) currentMsg = sm;
     const sc = localStorage.getItem(SK_CHAMADA); if (sc) chamadas = JSON.parse(sc);
     const sa = localStorage.getItem(SK_AULAS); if (sa) aulasData = JSON.parse(sa);
@@ -23430,8 +23438,12 @@ async function loadAllStorage() {
 
       if (map.alunos) {
         const p = JSON.parse(map.alunos);
-        // Merge: cloud data wins for existing, add new ones
-        p.forEach((d, i) => { if (data[i]) Object.assign(data[i], d); else data.push(d); });
+        // Merge by nome: cloud wins, new alunos get added
+        p.forEach(d => {
+          const existing = data.findIndex(x => x.nome === d.nome);
+          if (existing >= 0) Object.assign(data[existing], d);
+          else data.push(d);
+        });
         try { localStorage.setItem(SK_DATA, map.alunos); } catch(e) {}
       }
       if (map.mensagem) { currentMsg = map.mensagem; try { localStorage.setItem(SK_MSG, currentMsg); } catch(e) {} }
@@ -23473,7 +23485,11 @@ function startPolling() {
       if (map.alunos) {
         const p = JSON.parse(map.alunos);
         if (JSON.stringify(p) !== JSON.stringify(data)) {
-          p.forEach((d,i) => { if (data[i]) Object.assign(data[i], d); else data.push(d); });
+          p.forEach(d => {
+            const existing = data.findIndex(x => x.nome === d.nome);
+            if (existing >= 0) Object.assign(data[existing], d);
+            else data.push(d);
+          });
           changed = true; try { localStorage.setItem(SK_DATA, map.alunos); } catch(e) {}
         }
       }
@@ -23545,20 +23561,32 @@ function renderContact(role, name, rawPhone) {
 function buildCards() {
   const grid = document.getElementById('grid');
   grid.innerHTML = '';
-  data.forEach((d, i) => { if (d._deletado) return;
+
+  // Sort active (non-deleted) alunos alphabetically, keep original index for chamada refs
+  const ativos = data
+    .map((d, i) => ({ d, i }))
+    .filter(({ d }) => !d._deletado)
+    .sort((a, b) => a.d.nome.localeCompare(b.d.nome, 'pt-BR'));
+
+  // Update total count
+  const totalEl = document.getElementById('total');
+  if (totalEl) totalEl.textContent = ativos.length;
+
+  ativos.forEach(({ d, i }, pos) => {
     const card = document.createElement('div');
     card.className = 'card' + (selectedIdx.has(i) ? ' selected' : '');
     card.dataset.idx = i; card.dataset.turma = d.t;
-    card.dataset.search = d.nome.toLowerCase() + ' ' + d.pai.toLowerCase() + ' ' + d.mae.toLowerCase();
-    card.style.animationDelay = (i * 0.012) + 's';
-    const modified = JSON.stringify(d) !== JSON.stringify(originalData[i]);
+    card.dataset.search = d.nome.toLowerCase() + ' ' + (d.pai||'').toLowerCase() + ' ' + (d.mae||'').toLowerCase();
+    card.style.animationDelay = (pos * 0.012) + 's';
+    const modified = originalData[i] && JSON.stringify(d) !== JSON.stringify(originalData[i]);
     const badge = modified ? '<span class="modified-badge">editado</span>' : '';
     const tTag = d.t === 1 ? '<span class="turma-tag-t1">T1</span>' : '<span class="turma-tag-t2">T2</span>';
     const obs = d.obs ? '<div class="obs-tag">⚠️ ' + d.obs + '</div>' : '';
     const photo = photosData[i];
+    // Show position number (alphabetical order), not original n
     const numContent = photo
       ? '<img src="' + photo + '" alt="">'
-      : d.n;
+      : (pos + 1);
     card.innerHTML =
       '<div class="card-checkbox-wrap' + (selectMode ? ' visible' : '') + '">' +
         '<input type="checkbox" class="card-checkbox" ' + (selectedIdx.has(i) ? 'checked' : '') +
