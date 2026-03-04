@@ -703,12 +703,12 @@
       <!-- LOGIN -->
       <div id="authLogin">
         <div style="margin-bottom:12px;">
-          <label style="font-size:.72rem;font-weight:700;color:#7a6a52;display:block;margin-bottom:4px;">E-MAIL</label>
-          <input id="loginEmail" type="email" placeholder="seu@email.com" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5d5b5;border-radius:10px;font-size:.9rem;outline:none;">
+          <label style="font-size:.72rem;font-weight:700;color:#7a6a52;display:block;margin-bottom:4px;">NOME DE USUÁRIO</label>
+          <input id="loginEmail" type="text" placeholder="Ex: vitoria" autocomplete="username" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5d5b5;border-radius:10px;font-size:.9rem;outline:none;">
         </div>
         <div style="margin-bottom:18px;">
           <label style="font-size:.72rem;font-weight:700;color:#7a6a52;display:block;margin-bottom:4px;">SENHA</label>
-          <input id="loginSenha" type="password" placeholder="Sua senha" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5d5b5;border-radius:10px;font-size:.9rem;outline:none;" onkeydown="if(event.key==='Enter') fazerLogin()">
+          <input id="loginSenha" type="password" placeholder="Sua senha" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5d5b5;border-radius:10px;font-size:.9rem;outline:none;" onkeydown="if(event.key==='Enter') fazerLogin()">
         </div>
         <div id="loginErro" style="color:#dc2626;font-size:.75rem;margin-bottom:10px;display:none;background:#fef2f2;border-radius:8px;padding:8px 12px;"></div>
         <button id="btnEntrar" onclick="fazerLogin()" style="width:100%;padding:12px;background:linear-gradient(135deg,#7c3aed,#4a3217);color:white;border:none;border-radius:10px;font-size:.9rem;font-weight:700;cursor:pointer;">Entrar</button>
@@ -716,16 +716,16 @@
       <!-- CADASTRO -->
       <div id="authCadastro" style="display:none;">
         <div style="margin-bottom:12px;">
-          <label style="font-size:.72rem;font-weight:700;color:#7a6a52;display:block;margin-bottom:4px;">NOME</label>
-          <input id="cadNome" type="text" placeholder="Seu nome completo" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5d5b5;border-radius:10px;font-size:.9rem;outline:none;">
+          <label style="font-size:.72rem;font-weight:700;color:#7a6a52;display:block;margin-bottom:4px;">NOME DE USUÁRIO</label>
+          <input id="cadNome" type="text" placeholder="Ex: vitoria" autocomplete="username" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5d5b5;border-radius:10px;font-size:.9rem;outline:none;">
         </div>
         <div style="margin-bottom:12px;">
-          <label style="font-size:.72rem;font-weight:700;color:#7a6a52;display:block;margin-bottom:4px;">E-MAIL</label>
-          <input id="cadEmail" type="email" placeholder="seu@email.com" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5d5b5;border-radius:10px;font-size:.9rem;outline:none;">
+          <label style="font-size:.72rem;font-weight:700;color:#7a6a52;display:block;margin-bottom:4px;">NOME COMPLETO</label>
+          <input id="cadEmail" type="text" placeholder="Ex: Vitória Silva" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5d5b5;border-radius:10px;font-size:.9rem;outline:none;">
         </div>
         <div style="margin-bottom:18px;">
           <label style="font-size:.72rem;font-weight:700;color:#7a6a52;display:block;margin-bottom:4px;">SENHA</label>
-          <input id="cadSenha" type="password" placeholder="Mínimo 6 caracteres" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5d5b5;border-radius:10px;font-size:.9rem;outline:none;">
+          <input id="cadSenha" type="password" placeholder="Mínimo 6 caracteres" autocomplete="new-password" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5d5b5;border-radius:10px;font-size:.9rem;outline:none;">
         </div>
         <div id="cadErro" style="color:#dc2626;font-size:.75rem;margin-bottom:10px;display:none;background:#fef2f2;border-radius:8px;padding:8px 12px;"></div>
         <div id="cadOk" style="color:#15803d;font-size:.75rem;margin-bottom:10px;display:none;background:#f0fdf4;border-radius:8px;padding:8px 12px;"></div>
@@ -23529,12 +23529,15 @@ async function loadAllStorage() {
   }
 }
 
-// ── REALTIME POLLING (every 15s when app visible) ──
+// ── REALTIME POLLING (every 20s, never interrupts chamada) ──
 let _pollInterval = null;
 function startPolling() {
   if (_pollInterval) return;
   _pollInterval = setInterval(async () => {
     if (document.hidden) return;
+    // Never interrupt chamada tab
+    const pg = document.querySelector('.page.active');
+    if (pg && pg.id === 'pg-chamada') return;
     try {
       const rows = await supaFetch('config?select=chave,valor');
       if (!rows) return;
@@ -23543,44 +23546,24 @@ function startPolling() {
       let changed = false;
       const pck = 'chamadas_etapa' + etapaAtual;
       const pak = 'aulas_etapa' + etapaAtual;
-      if (map[pck]) {
-        try {
-          const novo = JSON.parse(map[pck]);
-          if (JSON.stringify(novo) !== JSON.stringify(chamadas)) { chamadas = novo; changed = true; }
-        } catch(e) {}
-      }
-      if (map[pak]) {
-        try {
-          const novo = JSON.parse(map[pak]);
-          if (JSON.stringify(novo) !== JSON.stringify(aulasData)) { aulasData = novo; changed = true; }
-        } catch(e) {}
-      }
+      if (map[pck]) { try { const n = JSON.parse(map[pck]); if (JSON.stringify(n) !== JSON.stringify(chamadas)) { chamadas = n; changed = true; } } catch(e) {} }
+      if (map[pak]) { try { const n = JSON.parse(map[pak]); if (JSON.stringify(n) !== JSON.stringify(aulasData)) { aulasData = n; changed = true; } } catch(e) {} }
       if (map.alunos) {
         try {
           const p = JSON.parse(map.alunos);
           if (JSON.stringify(p) !== JSON.stringify(data)) {
-            p.forEach(d => {
-              const ex = data.findIndex(x => x.nome === d.nome);
-              if (ex >= 0) Object.assign(data[ex], d); else data.push(d);
-            });
+            p.forEach(d => { const ex = data.findIndex(x => x.nome === d.nome); if (ex >= 0) Object.assign(data[ex], d); else data.push(d); });
             changed = true;
           }
         } catch(e) {}
       }
-      if (map.fotos) {
-        try {
-          const novo = JSON.parse(map.fotos);
-          if (JSON.stringify(novo) !== JSON.stringify(photosData)) { photosData = novo; changed = true; }
-        } catch(e) {}
-      }
+      if (map.fotos) { try { const n = JSON.parse(map.fotos); if (JSON.stringify(n) !== JSON.stringify(photosData)) { photosData = n; changed = true; } } catch(e) {} }
       if (changed) {
         buildCards();
-        buildChamadaList();
         if (document.getElementById('pg-calendario').classList.contains('active')) renderCalendar();
-        showSyncStatus('🔄 Atualizado', true);
       }
-    } catch(e) { /* silently fail */ }
-  }, 15000);
+    } catch(e) {}
+  }, 20000);
 }
 
 function showSyncStatus(msg, fade) {
@@ -24789,8 +24772,8 @@ function openAdminModal() {
 
 function checkAdminPwd() {
   const val = document.getElementById('adminPwd').value;
-  // Allow both the panel password AND the main admin password
-  if (val === ADMIN_PASSWORD || (currentUser && currentUser.role === 'admin')) {
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  if (val === ADMIN_PASSWORD || isAdmin) {
     document.getElementById('adminPwdError').style.display = 'none';
     document.getElementById('adminActions').classList.add('unlocked');
     document.getElementById('adminPwd').style.borderColor = '#22c55e';
@@ -24798,6 +24781,18 @@ function checkAdminPwd() {
   } else {
     document.getElementById('adminPwdError').style.display = 'block';
     document.getElementById('adminPwd').style.borderColor = '#ef4444';
+  }
+}
+
+// Auto-unlock admin panel for admin user when opened
+function openAdminModal() {
+  openModal('adminOverlay');
+  if (currentUser && currentUser.role === 'admin') {
+    setTimeout(() => {
+      document.getElementById('adminActions').classList.add('unlocked');
+      document.getElementById('adminPwd').style.borderColor = '#22c55e';
+      loadPendingUsers();
+    }, 100);
   }
 }
 
@@ -25095,8 +25090,8 @@ async function downloadListaPresenca() {
 // ══════════════════════════════════════
 // AUTH SYSTEM
 // ══════════════════════════════════════
-const ADMIN_EMAIL = 'vinioglm@admin';
-const ADMIN_PASS  = 'vini1712vih2709';
+const ADMIN_USER = 'vini';
+const ADMIN_PASS = 'vini1712vih2709';
 let currentUser = null;
 
 function showAuthTab(tab) {
@@ -25111,21 +25106,10 @@ function showAuthTab(tab) {
 async function supaGetConfig(chave) {
   try {
     const url = SUPA_URL + '/rest/v1/config?chave=eq.' + encodeURIComponent(chave) + '&select=chave,valor';
-    console.log('[supaGetConfig] GET', url);
     const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Accept': 'application/json' } });
-    console.log('[supaGetConfig] status:', res.status);
-    if (!res.ok) {
-      const txt = await res.text();
-      console.error('[supaGetConfig] error body:', txt);
-      return null;
-    }
-    const data = await res.json();
-    console.log('[supaGetConfig] rows:', data.length);
-    return data;
-  } catch(e) {
-    console.error('[supaGetConfig] exception:', e.message);
-    return null;
-  }
+    if (!res.ok) return null;
+    return await res.json();
+  } catch(e) { return null; }
 }
 
 async function supaGetAllUsers() {
@@ -25147,50 +25131,59 @@ async function supaDeleteConfig(chave) {
 }
 
 async function fazerLogin() {
-  const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+  const input = document.getElementById('loginEmail').value.trim().toLowerCase();
   const senha = document.getElementById('loginSenha').value;
   const errEl = document.getElementById('loginErro');
   const btn   = document.getElementById('btnEntrar');
   errEl.style.display = 'none';
-  if (!email || !senha) { errEl.textContent = 'Preencha e-mail e senha.'; errEl.style.display = ''; return; }
-  if (email === ADMIN_EMAIL && senha === ADMIN_PASS) {
-    currentUser = { email, nome: 'Admin', role: 'admin' };
+
+  if (!input || !senha) { errEl.textContent = 'Preencha usuário e senha.'; errEl.style.display = ''; return; }
+
+  // Admin hardcoded
+  if (input === ADMIN_USER && senha === ADMIN_PASS) {
+    currentUser = { username: ADMIN_USER, nome: 'Vini (Admin)', role: 'admin' };
     try { sessionStorage.setItem('crUser', JSON.stringify(currentUser)); } catch(e) {}
-    hideAuthOverlay(); updateUserBadge();
-    return;
+    hideAuthOverlay(); updateUserBadge(); return;
   }
 
   btn.textContent = 'Verificando...'; btn.disabled = true;
-  const rows = await supaGetConfig('user_' + email);
+
+  // Try username key first, then old email-based keys as fallback
+  let rows = await supaGetConfig('user_' + input);
+  if (!rows || rows.length === 0) rows = await supaGetConfig('user_' + input + '@hotmail.com');
+  if (!rows || rows.length === 0) rows = await supaGetConfig('user_' + input + '@gmail.com');
+
   btn.textContent = 'Entrar'; btn.disabled = false;
-  if (rows === null) { errEl.textContent = '❌ Erro de conexão com o servidor. Verifique sua internet.'; errEl.style.display = ''; return; }
-  if (!rows || rows.length === 0) { errEl.textContent = 'Usuário não encontrado. Crie uma conta primeiro.'; errEl.style.display = ''; return; }
-  let u; try { u = JSON.parse(rows[0].valor); } catch(e) { errEl.textContent = 'Erro nos dados: ' + e.message; errEl.style.display = ''; return; }
+
+  if (!rows || rows.length === 0) { errEl.textContent = 'Usuário não encontrado. Solicite acesso.'; errEl.style.display = ''; return; }
+  let u; try { u = JSON.parse(rows[0].valor); } catch(e) { errEl.textContent = 'Erro nos dados.'; errEl.style.display = ''; return; }
   if (u.senha !== btoa(senha)) { errEl.textContent = 'Senha incorreta.'; errEl.style.display = ''; return; }
-  if (u.status === 'pendente') { document.getElementById('authOverlay').style.display = 'none'; document.getElementById('pendingOverlay').style.display = 'flex'; return; }
+  if (u.status === 'pendente') {
+    document.getElementById('authOverlay').style.display = 'none';
+    document.getElementById('pendingOverlay').style.display = 'flex'; return;
+  }
   if (u.status !== 'aprovado') { errEl.textContent = 'Acesso negado.'; errEl.style.display = ''; return; }
-  currentUser = { email, nome: u.nome, role: 'user' };
+  currentUser = { username: input, nome: u.nomeCompleto || u.nome || input, role: 'user' };
   try { sessionStorage.setItem('crUser', JSON.stringify(currentUser)); } catch(e) {}
   hideAuthOverlay(); updateUserBadge();
 }
 
 async function solicitarCadastro() {
-  const nome  = document.getElementById('cadNome').value.trim();
-  const email = document.getElementById('cadEmail').value.trim().toLowerCase();
-  const senha = document.getElementById('cadSenha').value;
+  const username     = document.getElementById('cadNome').value.trim().toLowerCase().replace(/\s+/g, '');
+  const nomeCompleto = document.getElementById('cadEmail').value.trim();
+  const senha        = document.getElementById('cadSenha').value;
   const errEl = document.getElementById('cadErro');
   const okEl  = document.getElementById('cadOk');
   const btn   = document.getElementById('btnSolicitar');
   errEl.style.display = 'none'; okEl.style.display = 'none';
 
-  if (!nome)  { errEl.textContent = 'Informe seu nome.'; errEl.style.display = ''; return; }
-  if (!email || !email.includes('@')) { errEl.textContent = 'Informe um e-mail válido.'; errEl.style.display = ''; return; }
+  if (!username)     { errEl.textContent = 'Informe um nome de usuário (sem espaços).'; errEl.style.display = ''; return; }
+  if (!nomeCompleto) { errEl.textContent = 'Informe seu nome completo.'; errEl.style.display = ''; return; }
   if (!senha || senha.length < 6) { errEl.textContent = 'Senha deve ter pelo menos 6 caracteres.'; errEl.style.display = ''; return; }
 
   btn.textContent = 'Enviando...'; btn.disabled = true;
-  errEl.textContent = 'Conectando ao servidor...'; errEl.style.display = ''; errEl.style.color = '#7c3aed';
-  const chave = 'user_' + email;
-  const valor = JSON.stringify({ nome, email, senha: btoa(senha), status: 'pendente', criadoEm: new Date().toISOString() });
+  const chave = 'user_' + username;
+  const valor = JSON.stringify({ username, nomeCompleto, nome: nomeCompleto, senha: btoa(senha), status: 'pendente', criadoEm: new Date().toISOString() });
   const ok = await supaUpsertConfig(chave, valor);
   btn.textContent = 'Solicitar Acesso'; btn.disabled = false;
   if (ok !== null) {
@@ -25218,25 +25211,31 @@ function hideAuthOverlay() {
   if (p) p.style.display = 'none';
 }
 
-
 function updateUserBadge() {
   if (!currentUser) return;
-  const nameEl = document.getElementById('user-name-badge');
+  const name = currentUser.nome || currentUser.username || '?';
+  const nameEl   = document.getElementById('user-name-badge');
   const avatarEl = document.getElementById('user-avatar');
-  if (nameEl) nameEl.textContent = currentUser.nome || currentUser.email.split('@')[0];
-  if (avatarEl) avatarEl.textContent = (currentUser.nome || currentUser.email)[0].toUpperCase();
+  if (nameEl)   nameEl.textContent   = name;
+  if (avatarEl) avatarEl.textContent = name[0].toUpperCase();
 }
+
 async function checkSavedSession() {
-  // Check for saved session in sessionStorage (tab-only, cleared on close)
   try {
     const saved = sessionStorage.getItem('crUser');
     if (saved) {
       const u = JSON.parse(saved);
-      if (u.email === ADMIN_EMAIL) { currentUser = u; hideAuthOverlay(); updateUserBadge(); return; }
-      const rows = await supaGetConfig('user_' + u.email);
+      if (u.username === ADMIN_USER || u.email === 'vinioglm@admin') {
+        currentUser = { username: ADMIN_USER, nome: 'Vini (Admin)', role: 'admin' };
+        hideAuthOverlay(); updateUserBadge(); return;
+      }
+      const key = 'user_' + (u.username || u.email || '');
+      const rows = await supaGetConfig(key);
       if (rows && rows.length > 0) {
         const ud = JSON.parse(rows[0].valor);
-        if (ud.status === 'aprovado') { currentUser = u; hideAuthOverlay(); updateUserBadge(); return; }
+        if (ud.status === 'aprovado') {
+          currentUser = u; hideAuthOverlay(); updateUserBadge(); return;
+        }
         if (ud.status === 'pendente') {
           document.getElementById('authOverlay').style.display = 'none';
           document.getElementById('pendingOverlay').style.display = 'flex'; return;
@@ -25250,58 +25249,60 @@ async function checkSavedSession() {
 async function loadPendingUsers() {
   const pendEl = document.getElementById('pendingUsersList');
   const appEl  = document.getElementById('approvedUsersList');
-  if (pendEl) pendEl.innerHTML = '<div style="color:#7a6a52;">Carregando...</div>';
-  if (appEl)  appEl.innerHTML  = '<div style="color:#7a6a52;">Carregando...</div>';
+  if (pendEl) pendEl.innerHTML = '<div style="color:#7a6a52;font-size:.75rem;">Carregando...</div>';
+  if (appEl)  appEl.innerHTML  = '<div style="color:#7a6a52;font-size:.75rem;">Carregando...</div>';
 
   const rows = await supaGetAllUsers();
-  const users = rows.map(r => { try { return JSON.parse(r.valor); } catch(e) { return null; } }).filter(Boolean);
+  const users = rows.map(r => { try { return { chave: r.chave, ...JSON.parse(r.valor) }; } catch(e) { return null; } }).filter(Boolean);
   const pending  = users.filter(u => u.status === 'pendente');
   const approved = users.filter(u => u.status === 'aprovado');
 
   if (pendEl) {
-    if (pending.length === 0) {
-      pendEl.innerHTML = '<div style="color:#7a6a52;font-style:italic;font-size:.75rem;">Nenhuma solicitação pendente.</div>';
-    } else {
-      pendEl.innerHTML = pending.map(function(u) {
-        var e = JSON.stringify(u.email);
-        return '<div style="display:flex;align-items:center;gap:6px;padding:8px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;margin-bottom:6px;">' +
-          '<div style="flex:1"><div style="font-weight:700;font-size:.82rem;">' + u.nome + '</div><div style="font-size:.65rem;color:#7a6a52;">' + u.email + '</div></div>' +
-          '<button onclick="aprovarUsuario(' + e + ')" style="padding:5px 10px;background:#15803d;color:white;border:none;border-radius:7px;font-weight:700;font-size:.7rem;cursor:pointer;">✅</button>' +
-          '<button onclick="recusarUsuario(' + e + ')" style="padding:5px 10px;background:#dc2626;color:white;border:none;border-radius:7px;font-weight:700;font-size:.7rem;cursor:pointer;">✗</button>' +
-          '</div>';
-      }).join('');
-    }
+    pendEl.innerHTML = pending.length === 0
+      ? '<div style="color:#7a6a52;font-style:italic;font-size:.75rem;">Nenhuma solicitação pendente.</div>'
+      : pending.map(function(u) {
+          var key = JSON.stringify(u.chave.replace('user_', ''));
+          var display = u.nomeCompleto || u.nome || u.username || u.email || u.chave;
+          var sub = '@' + (u.username || u.email || '');
+          return '<div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;margin-bottom:6px;">' +
+            '<div style="flex:1"><div style="font-weight:700;font-size:.82rem;">' + display + '</div>' +
+            '<div style="font-size:.65rem;color:#7a6a52;">' + sub + '</div></div>' +
+            '<button onclick="aprovarUsuario(' + key + ')" style="padding:6px 12px;background:#15803d;color:white;border:none;border-radius:7px;font-weight:700;font-size:.72rem;cursor:pointer;white-space:nowrap;">✅ Aprovar</button>' +
+            '<button onclick="recusarUsuario(' + key + ')" style="padding:6px 10px;background:#dc2626;color:white;border:none;border-radius:7px;font-weight:700;font-size:.72rem;cursor:pointer;">✗</button>' +
+            '</div>';
+        }).join('');
   }
 
   if (appEl) {
-    if (approved.length === 0) {
-      appEl.innerHTML = '<div style="color:#7a6a52;font-style:italic;font-size:.75rem;">Nenhum usuário aprovado ainda.</div>';
-    } else {
-      appEl.innerHTML = approved.map(function(u) {
-        var e = JSON.stringify(u.email);
-        return '<div style="display:flex;align-items:center;gap:6px;padding:8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:6px;">' +
-          '<div style="width:28px;height:28px;border-radius:50%;background:#15803d;color:white;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.8rem;flex-shrink:0;">' + u.nome[0].toUpperCase() + '</div>' +
-          '<div style="flex:1"><div style="font-weight:700;font-size:.82rem;">' + u.nome + '</div><div style="font-size:.65rem;color:#7a6a52;">' + u.email + '</div></div>' +
-          '<button onclick="recusarUsuario(' + e + ')" style="padding:4px 8px;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:7px;font-weight:700;font-size:.65rem;cursor:pointer;">Remover</button>' +
-          '</div>';
-      }).join('');
-    }
+    appEl.innerHTML = approved.length === 0
+      ? '<div style="color:#7a6a52;font-style:italic;font-size:.75rem;">Nenhum usuário aprovado ainda.</div>'
+      : approved.map(function(u) {
+          var key = JSON.stringify(u.chave.replace('user_', ''));
+          var display = u.nomeCompleto || u.nome || u.username || u.email || u.chave;
+          var avatar = display[0].toUpperCase();
+          return '<div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:6px;">' +
+            '<div style="width:28px;height:28px;border-radius:50%;background:#15803d;color:white;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.8rem;flex-shrink:0;">' + avatar + '</div>' +
+            '<div style="flex:1"><div style="font-weight:700;font-size:.82rem;">' + display + '</div>' +
+            '<div style="font-size:.65rem;color:#7a6a52;">@' + (u.username || u.email || '') + '</div></div>' +
+            '<button onclick="recusarUsuario(' + key + ')" style="padding:4px 8px;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:7px;font-weight:700;font-size:.65rem;cursor:pointer;">Remover</button>' +
+            '</div>';
+        }).join('');
   }
 }
 
-async function aprovarUsuario(email) {
-  const rows = await supaGetConfig('user_' + email);
-  if (!rows || rows.length === 0) return;
+async function aprovarUsuario(username) {
+  const rows = await supaGetConfig('user_' + username);
+  if (!rows || rows.length === 0) { showToast('❌ Usuário não encontrado'); return; }
   const u = JSON.parse(rows[0].valor);
   u.status = 'aprovado';
-  await supaUpsertConfig('user_' + email, JSON.stringify(u));
-  showToast('✅ ' + u.nome + ' aprovado!');
+  await supaUpsertConfig('user_' + username, JSON.stringify(u));
+  showToast('✅ ' + (u.nomeCompleto || u.nome || username) + ' aprovado!');
   loadPendingUsers();
 }
 
-async function recusarUsuario(email) {
-  await supaDeleteConfig('user_' + email);
-  showToast('🗑️ Solicitação recusada.');
+async function recusarUsuario(username) {
+  await supaDeleteConfig('user_' + username);
+  showToast('🗑️ Usuário removido.');
   loadPendingUsers();
 }
 
