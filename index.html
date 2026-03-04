@@ -25381,8 +25381,7 @@ async function loadPendingUsers() {
   const users = rows.map(r => {
     try {
       const u = JSON.parse(r.valor);
-      u._chave = r.chave; // e.g. 'usr_vitoria'
-      u._key   = r.chave.replace(/^usr_/, '').replace(/^user_/, '').replace(/^usu[aá]rio_/, '').replace(/^usuario_/, ''); // just 'vitoria'
+      u._chave = r.chave; // full key e.g. 'usr_vitoria' or 'usuário_vitoria'
       return u;
     } catch(e) { return null; }
   }).filter(Boolean);
@@ -25390,65 +25389,80 @@ async function loadPendingUsers() {
   const pending  = users.filter(u => u.status === 'pendente');
   const approved = users.filter(u => u.status === 'aprovado');
 
+  function makeUserCard(u, isPending) {
+    const display = u.username || u._chave;
+    const avatar  = display[0].toUpperCase();
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:8px;margin-bottom:6px;' +
+      (isPending ? 'background:#fff7ed;border:1px solid #fed7aa;' : 'background:#f0fdf4;border:1px solid #bbf7d0;');
+
+    if (!isPending) {
+      const av = document.createElement('div');
+      av.style.cssText = 'width:26px;height:26px;border-radius:50%;background:#15803d;color:white;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.8rem;flex-shrink:0;';
+      av.textContent = avatar;
+      div.appendChild(av);
+    }
+
+    const info = document.createElement('div');
+    info.style.flex = '1';
+    info.innerHTML = '<div style="font-weight:700;font-size:.82rem;">@' + display + '</div>' +
+      (isPending ? '<div style="font-size:.65rem;color:#7a6a52;">Aguardando aprovação</div>' : '');
+    div.appendChild(info);
+
+    if (isPending) {
+      const btnOk = document.createElement('button');
+      btnOk.textContent = '✅ Aprovar';
+      btnOk.style.cssText = 'padding:6px 14px;background:#15803d;color:white;border:none;border-radius:7px;font-weight:700;font-size:.75rem;cursor:pointer;';
+      btnOk.onclick = () => aprovarUsuario(u._chave);
+      div.appendChild(btnOk);
+    }
+
+    const btnDel = document.createElement('button');
+    btnDel.textContent = isPending ? '✗' : 'Remover';
+    btnDel.style.cssText = isPending
+      ? 'padding:6px 10px;background:#dc2626;color:white;border:none;border-radius:7px;font-weight:700;font-size:.75rem;cursor:pointer;'
+      : 'padding:4px 8px;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:7px;font-weight:700;font-size:.65rem;cursor:pointer;';
+    btnDel.onclick = () => recusarUsuario(u._chave);
+    div.appendChild(btnDel);
+
+    return div;
+  }
+
   if (pendEl) {
+    pendEl.innerHTML = '';
     if (pending.length === 0) {
       pendEl.innerHTML = '<div style="color:#7a6a52;font-style:italic;font-size:.75rem;">Nenhuma solicitação pendente.</div>';
     } else {
-      pendEl.innerHTML = pending.map(function(u) {
-        var k = JSON.stringify(u._key);
-        var displayName = u.username || u._key;
-        return '<div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;margin-bottom:6px;">' +
-          '<div style="flex:1"><div style="font-weight:700;font-size:.85rem;">@' + displayName + '</div>' +
-          '<div style="font-size:.65rem;color:#7a6a52;">Aguardando aprovação</div></div>' +
-          '<button onclick="aprovarUsuario(' + k + ')" style="padding:6px 14px;background:#15803d;color:white;border:none;border-radius:7px;font-weight:700;font-size:.75rem;cursor:pointer;">✅ Aprovar</button>' +
-          '<button onclick="recusarUsuario(' + k + ')" style="padding:6px 10px;background:#dc2626;color:white;border:none;border-radius:7px;font-weight:700;font-size:.75rem;cursor:pointer;">✗</button>' +
-          '</div>';
-      }).join('');
+      pending.forEach(u => pendEl.appendChild(makeUserCard(u, true)));
     }
   }
 
   if (appEl) {
+    appEl.innerHTML = '';
     if (approved.length === 0) {
       appEl.innerHTML = '<div style="color:#7a6a52;font-style:italic;font-size:.75rem;">Nenhum usuário aprovado ainda.</div>';
     } else {
-      appEl.innerHTML = approved.map(function(u) {
-        var k = JSON.stringify(u._key);
-        var displayName = u.username || u._key;
-        var avatar = displayName[0].toUpperCase();
-        return '<div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:6px;">' +
-          '<div style="width:26px;height:26px;border-radius:50%;background:#15803d;color:white;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.8rem;flex-shrink:0;">' + avatar + '</div>' +
-          '<div style="flex:1"><div style="font-weight:700;font-size:.82rem;">@' + displayName + '</div></div>' +
-          '<button onclick="recusarUsuario(' + k + ')" style="padding:4px 8px;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:7px;font-weight:700;font-size:.65rem;cursor:pointer;">Remover</button>' +
-          '</div>';
-      }).join('');
+      approved.forEach(u => appEl.appendChild(makeUserCard(u, false)));
     }
   }
 }
 
-async function aprovarUsuario(key) {
-  // key is just the username part e.g. 'vitoria'
-  // Try usr_ prefix first, then user_ for old accounts
-  // Try all possible prefixes (Chrome may have translated 'user_' to 'usuário_')
-  let chave = 'usr_' + key;
-  let rows = await supaGetConfig(chave);
-  if (!rows || rows.length === 0) { chave = 'user_' + key; rows = await supaGetConfig(chave); }
-  if (!rows || rows.length === 0) { chave = 'usuário_' + key; rows = await supaGetConfig(chave); }
-  if (!rows || rows.length === 0) { chave = 'usuario_' + key; rows = await supaGetConfig(chave); }
-  if (!rows || rows.length === 0) { showToast('❌ Usuário não encontrado'); return; }
+
+async function aprovarUsuario(chave) {
+  // chave is the FULL DB key passed directly e.g. 'usr_vitoria' or 'usuário_vitoria'
+  const rows = await supaGetConfig(chave);
+  if (!rows || rows.length === 0) { showToast('❌ Não encontrado: ' + chave); return; }
   const u = JSON.parse(rows[0].valor);
   u.status = 'aprovado';
-  await supaUpsertConfig(chave, JSON.stringify(u));
-  showToast('✅ @' + key + ' aprovado!');
+  const ok = await supaUpsertConfig(chave, JSON.stringify(u));
+  showToast(ok !== null ? '✅ @' + (u.username || chave) + ' aprovado!' : '❌ Erro ao aprovar.');
   loadPendingUsers();
 }
 
-async function recusarUsuario(key) {
-  // Try usr_ first, then user_ for old accounts
-  await supaDeleteConfig('usr_' + key);
-  await supaDeleteConfig('user_' + key);
-  await supaDeleteConfig('usuário_' + key);
-  await supaDeleteConfig('usuario_' + key);
-  showToast('🗑️ @' + key + ' removido.');
+async function recusarUsuario(chave) {
+  // chave is the FULL DB key passed directly
+  await supaDeleteConfig(chave);
+  showToast('🗑️ Usuário removido.');
   loadPendingUsers();
 }
 
