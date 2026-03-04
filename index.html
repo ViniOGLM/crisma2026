@@ -25136,10 +25136,21 @@ function showAuthTab(tab) {
 async function supaGetConfig(chave) {
   try {
     const url = SUPA_URL + '/rest/v1/config?chave=eq.' + encodeURIComponent(chave) + '&select=chave,valor';
+    console.log('[supaGetConfig] GET', url);
     const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Accept': 'application/json' } });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch(e) { return null; }
+    console.log('[supaGetConfig] status:', res.status);
+    if (!res.ok) {
+      const txt = await res.text();
+      console.error('[supaGetConfig] error body:', txt);
+      return null;
+    }
+    const data = await res.json();
+    console.log('[supaGetConfig] rows:', data.length);
+    return data;
+  } catch(e) {
+    console.error('[supaGetConfig] exception:', e.message);
+    return null;
+  }
 }
 
 async function supaGetAllUsers() {
@@ -25176,11 +25187,14 @@ async function fazerLogin() {
   }
 
   btn.textContent = 'Verificando...'; btn.disabled = true;
+  errEl.textContent = 'Conectando ao servidor...'; errEl.style.display = ''; errEl.style.color = '#7c3aed';
   const rows = await supaGetConfig('user_' + email);
   btn.textContent = 'Entrar'; btn.disabled = false;
+  errEl.style.color = '#dc2626';
 
-  if (!rows || rows.length === 0) { errEl.textContent = 'Usuário não encontrado. Crie uma conta.'; errEl.style.display = ''; return; }
-  let u; try { u = JSON.parse(rows[0].valor); } catch(e) { errEl.textContent = 'Erro nos dados. Contate o admin.'; errEl.style.display = ''; return; }
+  if (rows === null) { errEl.textContent = '❌ Erro de conexão com o servidor. Verifique sua internet.'; errEl.style.display = ''; return; }
+  if (!rows || rows.length === 0) { errEl.textContent = 'Usuário não encontrado. Crie uma conta primeiro.'; errEl.style.display = ''; return; }
+  let u; try { u = JSON.parse(rows[0].valor); } catch(e) { errEl.textContent = 'Erro nos dados: ' + e.message; errEl.style.display = ''; return; }
   if (u.senha !== btoa(senha)) { errEl.textContent = 'Senha incorreta.'; errEl.style.display = ''; return; }
   if (u.status === 'pendente') { document.getElementById('authOverlay').style.display = 'none'; document.getElementById('pendingOverlay').style.display = 'flex'; return; }
   if (u.status !== 'aprovado') { errEl.textContent = 'Acesso negado.'; errEl.style.display = ''; return; }
@@ -25203,10 +25217,12 @@ async function solicitarCadastro() {
   if (!senha || senha.length < 6) { errEl.textContent = 'Senha deve ter pelo menos 6 caracteres.'; errEl.style.display = ''; return; }
 
   btn.textContent = 'Enviando...'; btn.disabled = true;
+  errEl.textContent = 'Conectando ao servidor...'; errEl.style.display = ''; errEl.style.color = '#7c3aed';
   const chave = 'user_' + email;
   const valor = JSON.stringify({ nome, email, senha: btoa(senha), status: 'pendente', criadoEm: new Date().toISOString() });
   const ok = await supaUpsertConfig(chave, valor);
   btn.textContent = 'Solicitar Acesso'; btn.disabled = false;
+  errEl.style.display = 'none';
   if (ok !== null) {
     okEl.textContent = '✅ Solicitação enviada! Aguarde aprovação do administrador.';
     okEl.style.display = '';
