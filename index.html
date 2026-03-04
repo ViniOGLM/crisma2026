@@ -310,6 +310,11 @@
 
 <!-- HEADER -->
 <div class="header">
+  <div id="user-badge" style="position:absolute;top:10px;left:12px;display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.12);border-radius:20px;padding:4px 10px 4px 6px;cursor:pointer;" onclick="logoutUser()" title="Toque para sair">
+    <div style="width:24px;height:24px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:800;color:#4a3217;" id="user-avatar">?</div>
+    <span id="user-name-badge" style="font-size:.65rem;font-weight:700;color:rgba(255,255,255,.85);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">...</span>
+    <span style="font-size:.55rem;color:rgba(255,255,255,.5);">sair</span>
+  </div>
   <span class="header-icon"><svg viewBox="0 0 40 40" width="36" height="36" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="16" y="2" width="8" height="36" rx="3" fill="#f0d98a"/><rect x="4" y="12" width="32" height="8" rx="3" fill="#f0d98a"/></svg></span>
   <h1 id="header-title">Crisma 2026 &mdash; <span id="header-etapa">1&ordf; Etapa</span></h1>
   <p>Catequistas Vit&oacute;ria &amp; Stefani &middot; Par&oacute;quia Maria M&atilde;e</p>
@@ -530,21 +535,13 @@
       <div id="adminPwdError" style="font-size:.75rem;color:#ef4444;display:none">❌ Senha incorreta.</div>
 
       <div class="admin-actions-hidden" id="adminActions">
-        <div class="admin-section-title">📤 Exportar & Importar</div>
+        <div class="admin-section-title">👥 Solicitações de Acesso</div>
+        <div id="pendingUsersList" style="font-size:.78rem;margin-bottom:4px;">Carregando...</div>
 
-        <button class="admin-action-btn" onclick="exportarDados()">
-          <span class="icon">📤</span>
-          <div><div class="label">Exportar todos os dados</div><div class="desc">Gera um arquivo .json com chamadas, aulas e edições de contatos</div></div>
-        </button>
-
-        <button class="admin-action-btn" onclick="document.getElementById('importFile').click()">
-          <span class="icon">📥</span>
-          <div><div class="label">Importar dados</div><div class="desc">Carrega um arquivo .json exportado anteriormente (substitui os dados atuais)</div></div>
-        </button>
-        <input type="file" id="importFile" accept=".json" style="display:none" onchange="importarDados(this)">
+        <div class="admin-section-title" style="margin-top:8px">👤 Usuários Aprovados</div>
+        <div id="approvedUsersList" style="font-size:.78rem;margin-bottom:4px;">Carregando...</div>
 
         <div class="admin-section-title" style="margin-top:8px">⚠️ Zona de Perigo</div>
-
         <button class="admin-action-btn danger" onclick="resetarTudo()">
           <span class="icon">🗑️</span>
           <div><div class="label">Resetar todos os dados</div><div class="desc">Apaga chamadas, aulas e edições de contatos. Não pode ser desfeito.</div></div>
@@ -23443,39 +23440,25 @@ function setEtapa(n) {
   const sufixos = ['','1ª','2ª'];
   document.getElementById('header-etapa').textContent = sufixos[n] + ' Etapa';
   document.querySelectorAll('.etapa-btn').forEach((b, i) => b.classList.toggle('active', i + 1 === n));
+  
   saveConfig('etapa', String(n));
-  // Reload etapa-specific data from Supabase
-  chamadas = {};
-  aulasData = {};
-  supaFetch('config?chave=eq.' + encodeURIComponent('chamadas_etapa' + n) + '&select=valor').then(rows => {
-    if (rows && rows.length > 0) { try { chamadas = JSON.parse(rows[0].valor); } catch(e) {} buildChamadaList(); }
+  // Reload etapa-specific data from cloud
+  chamadas = {}; aulasData = {};
+  supaGetConfig('chamadas_etapa' + n).then(rows => {
+    if (rows && rows[0]) { chamadas = JSON.parse(rows[0].valor); buildChamadaList(); }
   });
-  supaFetch('config?chave=eq.' + encodeURIComponent('aulas_etapa' + n) + '&select=valor').then(rows => {
-    if (rows && rows.length > 0) { try { aulasData = JSON.parse(rows[0].valor); } catch(e) {} if (document.getElementById('pg-calendario').classList.contains('active')) renderCalendar(); }
+  supaGetConfig('aulas_etapa' + n).then(rows => {
+    if (rows && rows[0]) { aulasData = JSON.parse(rows[0].valor); if (document.getElementById('pg-calendario').classList.contains('active')) renderCalendar(); }
   });
-  buildChamadaList();
-  if (document.getElementById('pg-calendario').classList.contains('active')) renderCalendar();
 }
 
 // ── SAVE FUNCTIONS (local + cloud) ──
-function saveToStorage() {
-  supaUpsertConfig('alunos', JSON.stringify(data));
-}
-function saveMsgStorage() {
-  supaUpsertConfig('mensagem', currentMsg);
-}
-function etapaKey(base) { return base + '_etapa' + etapaAtual; }
-function saveChamadas() {
-  const k = etapaKey('chamadas');
-  supaUpsertConfig(k, JSON.stringify(chamadas));
-}
-function saveAulas() {
-  const k = etapaKey('aulas');
-  supaUpsertConfig(k, JSON.stringify(aulasData));
-}
-function savePhotos() {
-  supaUpsertConfig('fotos', JSON.stringify(photosData));
-}
+function saveToStorage()  { supaUpsertConfig('alunos', JSON.stringify(data)); }
+function saveMsgStorage() { supaUpsertConfig('mensagem', currentMsg); }
+function etapaKey(base)   { return base + '_etapa' + etapaAtual; }
+function saveChamadas()   { supaUpsertConfig(etapaKey('chamadas'), JSON.stringify(chamadas)); }
+function saveAulas()      { supaUpsertConfig(etapaKey('aulas'), JSON.stringify(aulasData)); }
+function savePhotos()     { supaUpsertConfig('fotos', JSON.stringify(photosData)); }
 
 async function saveConfig(chave, valor) {
   await supaFetch('config?chave=eq.' + encodeURIComponent(chave), {
@@ -23501,9 +23484,28 @@ async function supaUpsertConfig(chave, valor) {
   } catch(e) { console.warn('Supabase offline:', e.message); }
 }
 
-// ── LOAD: Supabase only ──
+// ── LOAD: cloud first, localStorage fallback ──
 async function loadAllStorage() {
-  // Load from Supabase
+  // First load from localStorage for instant UI
+  try {
+    const sd = localStorage.getItem(SK_DATA);
+    if (sd) {
+      const p = JSON.parse(sd);
+      // Merge by nome to handle additions from any device
+      p.forEach(d => {
+        const existing = data.findIndex(x => x.nome === d.nome);
+        if (existing >= 0) Object.assign(data[existing], d);
+        else data.push(d);
+      });
+    }
+    const sm = localStorage.getItem(SK_MSG); if (sm) currentMsg = sm;
+    const sc = localStorage.getItem(SK_CHAMADA + etapaAtual) || localStorage.getItem(SK_CHAMADA); if (sc) chamadas = JSON.parse(sc);
+    const sa = localStorage.getItem(SK_AULAS + etapaAtual) || localStorage.getItem(SK_AULAS); if (sa) aulasData = JSON.parse(sa);
+    const sp = localStorage.getItem(SK_PHOTOS); if (sp) photosData = JSON.parse(sp);
+    const se = localStorage.getItem(SK_ETAPA); if (se) setEtapa(parseInt(se));
+  } catch(e) { console.warn('cloud load error:', e); }
+
+  // Then sync from cloud
   try {
     showSyncStatus('🔄 Sincronizando...');
     const rows = await supaFetch('config?select=chave,valor');
@@ -23519,16 +23521,17 @@ async function loadAllStorage() {
           if (existing >= 0) Object.assign(data[existing], d);
           else data.push(d);
         });
+        
       }
-      if (map.mensagem) { currentMsg = map.mensagem; }
+      if (map.mensagem) { currentMsg = map.mensagem;  }
       const ck = 'chamadas_etapa' + etapaAtual;
       const ak = 'aulas_etapa' + etapaAtual;
-      if (map[ck]) { chamadas = JSON.parse(map[ck]); }
-      if (map[ak]) { aulasData = JSON.parse(map[ak]); }
+      if (map[ck]) { chamadas = JSON.parse(map[ck]) }
+      if (map[ak]) { aulasData = JSON.parse(map[ak]) }
       // fallback for old key format
       if (!map[ck] && map.chamadas) { chamadas = JSON.parse(map.chamadas); }
       if (!map[ak] && map.aulas) { aulasData = JSON.parse(map.aulas); }
-      if (map.fotos)    { photosData = JSON.parse(map.fotos); }
+      if (map.fotos)    { photosData = JSON.parse(map.fotos);  try { localStorage.setItem(SK_PHOTOS,  map.fotos);   } catch(e) {} }
       if (map.etapa)    { setEtapa(parseInt(map.etapa)); }
     }
     showSyncStatus('✅ Sincronizado', true);
@@ -24793,10 +24796,12 @@ function openAdminModal() {
 
 function checkAdminPwd() {
   const val = document.getElementById('adminPwd').value;
-  if (val === ADMIN_PASSWORD) {
+  // Allow both the panel password AND the main admin password
+  if (val === ADMIN_PASSWORD || (currentUser && currentUser.role === 'admin')) {
     document.getElementById('adminPwdError').style.display = 'none';
     document.getElementById('adminActions').classList.add('unlocked');
     document.getElementById('adminPwd').style.borderColor = '#22c55e';
+    loadPendingUsers();
   } else {
     document.getElementById('adminPwdError').style.display = 'block';
     document.getElementById('adminPwd').style.borderColor = '#ef4444';
@@ -25157,8 +25162,8 @@ async function fazerLogin() {
   if (!email || !senha) { errEl.textContent = 'Preencha e-mail e senha.'; errEl.style.display = ''; return; }
   if (email === ADMIN_EMAIL && senha === ADMIN_PASS) {
     currentUser = { email, nome: 'Admin', role: 'admin' };
-    try { localStorage.setItem('crUser', JSON.stringify(currentUser)); } catch(e) {}
-    hideAuthOverlay();
+    try { sessionStorage.setItem('crUser', JSON.stringify(currentUser)); } catch(e) {}
+    hideAuthOverlay(); updateUserBadge();
     return;
   }
 
@@ -25172,8 +25177,8 @@ async function fazerLogin() {
   if (u.status === 'pendente') { document.getElementById('authOverlay').style.display = 'none'; document.getElementById('pendingOverlay').style.display = 'flex'; return; }
   if (u.status !== 'aprovado') { errEl.textContent = 'Acesso negado.'; errEl.style.display = ''; return; }
   currentUser = { email, nome: u.nome, role: 'user' };
-  try { localStorage.setItem('crUser', JSON.stringify(currentUser)); } catch(e) {}
-  hideAuthOverlay();
+  try { sessionStorage.setItem('crUser', JSON.stringify(currentUser)); } catch(e) {}
+  hideAuthOverlay(); updateUserBadge();
 }
 
 async function solicitarCadastro() {
@@ -25208,7 +25213,7 @@ async function solicitarCadastro() {
 
 function logoutUser() {
   currentUser = null;
-  try { localStorage.removeItem('crUser'); } catch(e) {}
+  try { sessionStorage.removeItem('crUser'); } catch(e) {}
   document.getElementById('pendingOverlay').style.display = 'none';
   document.getElementById('authOverlay').style.display = 'flex';
 }
@@ -25220,17 +25225,29 @@ function hideAuthOverlay() {
   if (p) p.style.display = 'none';
 }
 
+
+function updateUserBadge() {
+  if (!currentUser) return;
+  const nameEl = document.getElementById('user-name-badge');
+  const avatarEl = document.getElementById('user-avatar');
+  if (nameEl) nameEl.textContent = currentUser.nome || currentUser.email.split('@')[0];
+  if (avatarEl) avatarEl.textContent = (currentUser.nome || currentUser.email)[0].toUpperCase();
+}
 async function checkSavedSession() {
+  // Check for saved session in sessionStorage (tab-only, cleared on close)
   try {
-    const saved = localStorage.getItem('crUser');
+    const saved = sessionStorage.getItem('crUser');
     if (saved) {
       const u = JSON.parse(saved);
-      if (u.email === ADMIN_EMAIL) { currentUser = u; hideAuthOverlay(); return; }
+      if (u.email === ADMIN_EMAIL) { currentUser = u; hideAuthOverlay(); updateUserBadge(); return; }
       const rows = await supaGetConfig('user_' + u.email);
       if (rows && rows.length > 0) {
         const ud = JSON.parse(rows[0].valor);
-        if (ud.status === 'aprovado') { currentUser = u; hideAuthOverlay(); return; }
-        if (ud.status === 'pendente') { document.getElementById('authOverlay').style.display = 'none'; document.getElementById('pendingOverlay').style.display = 'flex'; return; }
+        if (ud.status === 'aprovado') { currentUser = u; hideAuthOverlay(); updateUserBadge(); return; }
+        if (ud.status === 'pendente') {
+          document.getElementById('authOverlay').style.display = 'none';
+          document.getElementById('pendingOverlay').style.display = 'flex'; return;
+        }
       }
     }
   } catch(e) {}
@@ -25238,20 +25255,45 @@ async function checkSavedSession() {
 }
 
 async function loadPendingUsers() {
-  const el = document.getElementById('pendingUsersList');
-  if (!el) return;
-  el.innerHTML = '<div style="color:#7a6a52;">Carregando...</div>';
+  const pendEl = document.getElementById('pendingUsersList');
+  const appEl  = document.getElementById('approvedUsersList');
+  if (pendEl) pendEl.innerHTML = '<div style="color:#7a6a52;">Carregando...</div>';
+  if (appEl)  appEl.innerHTML  = '<div style="color:#7a6a52;">Carregando...</div>';
+
   const rows = await supaGetAllUsers();
-  const pending = rows.map(r => { try { return JSON.parse(r.valor); } catch(e) { return null; } }).filter(u => u && u.status === 'pendente');
-  if (pending.length === 0) { el.innerHTML = '<div style="color:#7a6a52;font-style:italic;">Nenhuma solicitação pendente.</div>'; return; }
-  el.innerHTML = pending.map(function(u) {
-    var e = JSON.stringify(u.email);
-    return '<div style="display:flex;align-items:center;gap:8px;padding:8px;background:#f9f5ee;border-radius:8px;margin-bottom:6px;">' +
-      '<div style="flex:1"><div style="font-weight:700;">' + u.nome + '</div><div style="font-size:.68rem;color:#7a6a52;">' + u.email + '</div></div>' +
-      '<button onclick="aprovarUsuario(' + e + ')" style="padding:5px 10px;background:#15803d;color:white;border:none;border-radius:7px;font-weight:700;font-size:.72rem;cursor:pointer;">✅ Aprovar</button>' +
-      '<button onclick="recusarUsuario(' + e + ')" style="padding:5px 10px;background:#dc2626;color:white;border:none;border-radius:7px;font-weight:700;font-size:.72rem;cursor:pointer;">✗ Recusar</button>' +
-      '</div>';
-  }).join('');
+  const users = rows.map(r => { try { return JSON.parse(r.valor); } catch(e) { return null; } }).filter(Boolean);
+  const pending  = users.filter(u => u.status === 'pendente');
+  const approved = users.filter(u => u.status === 'aprovado');
+
+  if (pendEl) {
+    if (pending.length === 0) {
+      pendEl.innerHTML = '<div style="color:#7a6a52;font-style:italic;font-size:.75rem;">Nenhuma solicitação pendente.</div>';
+    } else {
+      pendEl.innerHTML = pending.map(function(u) {
+        var e = JSON.stringify(u.email);
+        return '<div style="display:flex;align-items:center;gap:6px;padding:8px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;margin-bottom:6px;">' +
+          '<div style="flex:1"><div style="font-weight:700;font-size:.82rem;">' + u.nome + '</div><div style="font-size:.65rem;color:#7a6a52;">' + u.email + '</div></div>' +
+          '<button onclick="aprovarUsuario(' + e + ')" style="padding:5px 10px;background:#15803d;color:white;border:none;border-radius:7px;font-weight:700;font-size:.7rem;cursor:pointer;">✅</button>' +
+          '<button onclick="recusarUsuario(' + e + ')" style="padding:5px 10px;background:#dc2626;color:white;border:none;border-radius:7px;font-weight:700;font-size:.7rem;cursor:pointer;">✗</button>' +
+          '</div>';
+      }).join('');
+    }
+  }
+
+  if (appEl) {
+    if (approved.length === 0) {
+      appEl.innerHTML = '<div style="color:#7a6a52;font-style:italic;font-size:.75rem;">Nenhum usuário aprovado ainda.</div>';
+    } else {
+      appEl.innerHTML = approved.map(function(u) {
+        var e = JSON.stringify(u.email);
+        return '<div style="display:flex;align-items:center;gap:6px;padding:8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:6px;">' +
+          '<div style="width:28px;height:28px;border-radius:50%;background:#15803d;color:white;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.8rem;flex-shrink:0;">' + u.nome[0].toUpperCase() + '</div>' +
+          '<div style="flex:1"><div style="font-weight:700;font-size:.82rem;">' + u.nome + '</div><div style="font-size:.65rem;color:#7a6a52;">' + u.email + '</div></div>' +
+          '<button onclick="recusarUsuario(' + e + ')" style="padding:4px 8px;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:7px;font-weight:700;font-size:.65rem;cursor:pointer;">Remover</button>' +
+          '</div>';
+      }).join('');
+    }
+  }
 }
 
 async function aprovarUsuario(email) {
