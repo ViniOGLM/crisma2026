@@ -23481,21 +23481,45 @@ async function saveConfig(chave, valor) {
   });
 }
 async function supaUpsertConfig(chave, valor) {
-  // Now that chave has UNIQUE constraint, merge-duplicates works correctly
   try {
-    const res = await fetch(SUPA_URL + '/rest/v1/config', {
+    // Use PATCH to update if exists, POST to insert if not
+    // Step 1: try PATCH
+    const patchRes = await fetch(
+      SUPA_URL + '/rest/v1/config?chave=eq.' + encodeURIComponent(chave),
+      {
+        method: 'PATCH',
+        headers: {
+          'apikey': SUPA_KEY,
+          'Authorization': 'Bearer ' + SUPA_KEY,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ valor })
+      }
+    );
+    if (!patchRes.ok) {
+      const e = await patchRes.text();
+      console.warn('[PATCH fail]', chave, patchRes.status, e);
+      return null;
+    }
+    const patched = await patchRes.json();
+    if (patched && patched.length > 0) return true; // updated existing
+
+    // Step 2: row didn't exist, INSERT
+    const postRes = await fetch(SUPA_URL + '/rest/v1/config', {
       method: 'POST',
       headers: {
         'apikey': SUPA_KEY,
         'Authorization': 'Bearer ' + SUPA_KEY,
         'Content-Type': 'application/json',
-        'Prefer': 'resolution=merge-duplicates,return=minimal'
+        'Prefer': 'return=minimal'
       },
       body: JSON.stringify({ chave, valor })
     });
-    if (!res.ok) {
-      const err = await res.text();
-      console.warn('[upsert error]', chave, res.status, err);
+    if (!postRes.ok) {
+      const e2 = await postRes.text();
+      console.warn('[POST fail]', chave, postRes.status, e2);
       return null;
     }
     return true;
@@ -23542,7 +23566,7 @@ async function loadAllStorage() {
     if (document.getElementById('pg-calendario').classList.contains('active')) renderCalendar();
   } catch(e) {
     console.warn('load error:', e);
-    showSyncStatus('📴 Offline', true);
+    showSyncStatus('❌ Erro: ' + e.message, true);
   }
 }
 
@@ -25133,7 +25157,7 @@ async function loadAllStorage() {
     if (document.getElementById('pg-calendario').classList.contains('active')) renderCalendar();
   } catch(e) {
     console.warn('load error:', e);
-    showSyncStatus('📴 Offline', true);
+    showSyncStatus('❌ Erro: ' + e.message, true);
   }
 }
 
@@ -25395,6 +25419,7 @@ async function loadPendingUsers() {
   if (appEl)  appEl.innerHTML  = '<div style="color:#7a6a52;font-size:.75rem;">Carregando...</div>';
 
   const rows = await supaGetAllUsers();
+  console.log('[loadPendingUsers] rows fetched:', rows.length);
   const users = rows.map(r => {
     try {
       const u = JSON.parse(r.valor);
@@ -25447,7 +25472,9 @@ async function loadPendingUsers() {
 
   if (pendEl) {
     pendEl.innerHTML = '';
-    if (pending.length === 0) {
+    if (rows.length === 0) {
+      pendEl.innerHTML = '<div style="color:#dc2626;font-size:.75rem;">⚠️ Erro ao conectar. Toque em Atualizar.</div>';
+    } else if (pending.length === 0) {
       pendEl.innerHTML = '<div style="color:#7a6a52;font-style:italic;font-size:.75rem;">Nenhuma solicitação pendente.</div>';
     } else {
       pending.forEach(u => pendEl.appendChild(makeUserCard(u, true)));
