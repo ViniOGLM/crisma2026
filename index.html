@@ -23505,10 +23505,15 @@ async function loadAllStorage() {
 
     if (map.alunos) {
       try {
-        const p = JSON.parse(map.alunos);
-        p.forEach(d => {
+        const cloudData = JSON.parse(map.alunos);
+        // Cloud is the source of truth - merge cloud fields onto local base data
+        cloudData.forEach(d => {
           const ex = data.findIndex(x => x.nome === d.nome);
-          if (ex >= 0) Object.assign(data[ex], d); else data.push(d);
+          if (ex >= 0) {
+            // Always apply cloud data including _deletado
+            Object.keys(d).forEach(k => { data[ex][k] = d[k]; });
+          }
+          // Don't add unknown students from cloud to avoid duplication
         });
       } catch(e) {}
     }
@@ -25087,6 +25092,116 @@ async function downloadListaPresenca() {
 }
 
 
+// ── LOAD: cloud only ──
+async function loadAllStorage() {
+  showSyncStatus('🔄 Carregando...');
+  try {
+    const rows = await supaFetch('config?select=chave,valor');
+    if (!rows) { showSyncStatus('📴 Offline', true); return; }
+    const map = {};
+    rows.forEach(r => map[r.chave] = r.valor);
+
+    if (map.alunos) {
+      try {
+        const cloudData = JSON.parse(map.alunos);
+        // Cloud is the source of truth - merge cloud fields onto local base data
+        cloudData.forEach(d => {
+          const ex = data.findIndex(x => x.nome === d.nome);
+          if (ex >= 0) {
+            // Always apply cloud data including _deletado
+            Object.keys(d).forEach(k => { data[ex][k] = d[k]; });
+          }
+          // Don't add unknown students from cloud to avoid duplication
+        });
+      } catch(e) {}
+    }
+    if (map.mensagem) currentMsg = map.mensagem;
+    const ck = 'chamadas_etapa' + etapaAtual;
+    const ak = 'aulas_etapa' + etapaAtual;
+    if (map[ck]) try { chamadas  = JSON.parse(map[ck]); } catch(e) {}
+    if (map[ak]) try { aulasData = JSON.parse(map[ak]); } catch(e) {}
+    if (map.fotos) try { photosData = JSON.parse(map.fotos); } catch(e) {}
+    if (map.etapa) setEtapa(parseInt(map.etapa));
+    showSyncStatus('✅ Sincronizado', true);
+    buildCards();
+    buildChamadaList();
+    if (document.getElementById('pg-calendario').classList.contains('active')) renderCalendar();
+  } catch(e) {
+    console.warn('load error:', e);
+    showSyncStatus('📴 Offline', true);
+  }
+}
+
+// ── REALTIME POLLING (every 20s, never interrupts chamada) ──
+function startPolling() {
+  if (_pollInterval) return;
+  _pollInterval = setInterval(async () => {
+    if (document.hidden) return;
+    // Never interrupt chamada tab
+    const pg = document.querySelector('.page.active');
+    if (pg && pg.id === 'pg-chamada') return;
+    try {
+      const rows = await supaFetch('config?select=chave,valor');
+      if (!rows) return;
+      const map = {};
+      rows.forEach(r => map[r.chave] = r.valor);
+      let changed = false;
+      const pck = 'chamadas_etapa' + etapaAtual;
+      const pak = 'aulas_etapa' + etapaAtual;
+      if (map[pck]) { try { const n = JSON.parse(map[pck]); if (JSON.stringify(n) !== JSON.stringify(chamadas)) { chamadas = n; changed = true; } } catch(e) {} }
+      if (map[pak]) { try { const n = JSON.parse(map[pak]); if (JSON.stringify(n) !== JSON.stringify(aulasData)) { aulasData = n; changed = true; } } catch(e) {} }
+      if (map.alunos) {
+        try {
+          const p = JSON.parse(map.alunos);
+          if (JSON.stringify(p) !== JSON.stringify(data)) {
+            p.forEach(d => { const ex = data.findIndex(x => x.nome === d.nome); if (ex >= 0) Object.assign(data[ex], d); else data.push(d); });
+            changed = true;
+          }
+        } catch(e) {}
+      }
+      if (map.fotos) { try { const n = JSON.parse(map.fotos); if (JSON.stringify(n) !== JSON.stringify(photosData)) { photosData = n; changed = true; } } catch(e) {} }
+      if (changed) {
+        buildCards();
+        if (document.getElementById('pg-calendario').classList.contains('active')) renderCalendar();
+      }
+    } catch(e) {}
+  }, 20000);
+}
+
+function showSyncStatus(msg, fade) {
+  let el = document.getElementById('sync-status');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'sync-status';
+    el.style.cssText = 'position:fixed;bottom:10px;left:10px;font-size:.65rem;font-weight:700;padding:4px 10px;border-radius:8px;background:rgba(74,50,23,.85);color:rgba(255,255,255,.8);z-index:299;transition:opacity .5s;pointer-events:none;';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.opacity = '1';
+  if (fade) setTimeout(() => { el.style.opacity = '0'; }, 3000);
+}
+
+function showToast(msg, color) {
+  let t = document.getElementById('toast');
+  if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
+  t.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);background:'+(color||'#1a3a1a')+';color:'+(color?'white':'#aeffb2')+';padding:10px 22px;border-radius:10px;font-size:.82rem;font-weight:700;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.3);transition:opacity .4s;pointer-events:none;opacity:1;';
+  t.textContent = msg;
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.style.opacity = '0'; }, 2500);
+}
+
+// ── PAGE NAV ──
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const pages = ['pg-whatsapp','pg-chamada','pg-graficos','pg-calendario'];
+  document.querySelectorAll('.nav-tab')[pages.indexOf(id)].classList.add('active');
+  if (id === 'pg-chamada') buildChamadaList();
+  if (id === 'pg-calendario') renderCalendar();
+}
+
+
 // ══════════════════════════════════════
 // AUTH SYSTEM
 // ══════════════════════════════════════
@@ -25114,7 +25229,7 @@ async function supaGetConfig(chave) {
 
 async function supaGetAllUsers() {
   try {
-    const url = SUPA_URL + '/rest/v1/config?chave=like.user_%&select=chave,valor';
+    const url = SUPA_URL + '/rest/v1/config?chave=like.usr_%&select=chave,valor';
     const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Accept': 'application/json' } });
     if (!res.ok) return [];
     return await res.json();
@@ -25149,9 +25264,9 @@ async function fazerLogin() {
   btn.textContent = 'Verificando...'; btn.disabled = true;
 
   // Try username key first, then old email-based keys as fallback
-  let rows = await supaGetConfig('user_' + input);
-  if (!rows || rows.length === 0) rows = await supaGetConfig('user_' + input + '@hotmail.com');
-  if (!rows || rows.length === 0) rows = await supaGetConfig('user_' + input + '@gmail.com');
+  let rows = await supaGetConfig('usr_' + input);
+  if (!rows || rows.length === 0) rows = await supaGetConfig('usr_' + input + '@hotmail.com');
+  if (!rows || rows.length === 0) rows = await supaGetConfig('usr_' + input + '@gmail.com');
 
   btn.textContent = 'Entrar'; btn.disabled = false;
 
@@ -25182,7 +25297,7 @@ async function solicitarCadastro() {
   if (!senha || senha.length < 6) { errEl.textContent = 'Senha deve ter pelo menos 6 caracteres.'; errEl.style.display = ''; return; }
 
   btn.textContent = 'Enviando...'; btn.disabled = true;
-  const chave = 'user_' + username;
+  const chave = 'usr_' + username;
   const valor = JSON.stringify({ username, nomeCompleto, nome: nomeCompleto, senha: btoa(senha), status: 'pendente', criadoEm: new Date().toISOString() });
   const ok = await supaUpsertConfig(chave, valor);
   btn.textContent = 'Solicitar Acesso'; btn.disabled = false;
@@ -25209,6 +25324,8 @@ function hideAuthOverlay() {
   var p = document.getElementById('pendingOverlay');
   if (a) a.style.display = 'none';
   if (p) p.style.display = 'none';
+  // Start inactivity timer when user logs in
+  if (typeof resetInactivityTimer === 'function') resetInactivityTimer();
 }
 
 function updateUserBadge() {
@@ -25229,7 +25346,7 @@ async function checkSavedSession() {
         currentUser = { username: ADMIN_USER, nome: 'Vini (Admin)', role: 'admin' };
         hideAuthOverlay(); updateUserBadge(); return;
       }
-      const key = 'user_' + (u.username || u.email || '');
+      const key = 'usr_' + (u.username || u.email || '');
       const rows = await supaGetConfig(key);
       if (rows && rows.length > 0) {
         const ud = JSON.parse(rows[0].valor);
@@ -25261,7 +25378,7 @@ async function loadPendingUsers() {
     pendEl.innerHTML = pending.length === 0
       ? '<div style="color:#7a6a52;font-style:italic;font-size:.75rem;">Nenhuma solicitação pendente.</div>'
       : pending.map(function(u) {
-          var key = JSON.stringify(u.chave.replace('user_', ''));
+          var key = JSON.stringify(u.chave.replace('usr_', '').replace('user_', ''));
           var display = u.nomeCompleto || u.nome || u.username || u.email || u.chave;
           var sub = '@' + (u.username || u.email || '');
           return '<div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;margin-bottom:6px;">' +
@@ -25277,7 +25394,7 @@ async function loadPendingUsers() {
     appEl.innerHTML = approved.length === 0
       ? '<div style="color:#7a6a52;font-style:italic;font-size:.75rem;">Nenhum usuário aprovado ainda.</div>'
       : approved.map(function(u) {
-          var key = JSON.stringify(u.chave.replace('user_', ''));
+          var key = JSON.stringify(u.chave.replace('usr_', '').replace('user_', ''));
           var display = u.nomeCompleto || u.nome || u.username || u.email || u.chave;
           var avatar = display[0].toUpperCase();
           return '<div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:6px;">' +
@@ -25291,17 +25408,17 @@ async function loadPendingUsers() {
 }
 
 async function aprovarUsuario(username) {
-  const rows = await supaGetConfig('user_' + username);
+  const rows = await supaGetConfig('usr_' + username);
   if (!rows || rows.length === 0) { showToast('❌ Usuário não encontrado'); return; }
   const u = JSON.parse(rows[0].valor);
   u.status = 'aprovado';
-  await supaUpsertConfig('user_' + username, JSON.stringify(u));
+  await supaUpsertConfig('usr_' + username, JSON.stringify(u));
   showToast('✅ ' + (u.nomeCompleto || u.nome || username) + ' aprovado!');
   loadPendingUsers();
 }
 
 async function recusarUsuario(username) {
-  await supaDeleteConfig('user_' + username);
+  await supaDeleteConfig('usr_' + username);
   showToast('🗑️ Usuário removido.');
   loadPendingUsers();
 }
@@ -25319,6 +25436,21 @@ async function recusarUsuario(username) {
 // Init: check auth first, then load
 buildCards();
 buildChamadaList();
+// ── AUTO-LOGOUT after 5 minutes inactivity ──
+let _inactivityTimer = null;
+function resetInactivityTimer() {
+  clearTimeout(_inactivityTimer);
+  _inactivityTimer = setTimeout(() => {
+    if (currentUser) {
+      showToast('⏱️ Sessão encerrada por inatividade.');
+      logoutUser();
+    }
+  }, 5 * 60 * 1000); // 5 minutes
+}
+['click','touchstart','keydown','scroll'].forEach(evt =>
+  document.addEventListener(evt, resetInactivityTimer, { passive: true })
+);
+
 checkSavedSession().then(() => {
   loadAllStorage().then(() => {
     startPolling();
