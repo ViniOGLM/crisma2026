@@ -23403,22 +23403,32 @@ const originalData = data.map(d => ({...d}));
 // SUPABASE CONFIG & SYNC
 // ══════════════════════════════════════
 const SUPA_URL = 'https://cdpidlcknwdiygtuurfy.supabase.co';
-const SUPA_KEY = 'sb_publishable_LdURI-sgmCdyqLfvLoTJ9Q_nnoF4tIG';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNkcGlkbGNrbndkaXlndHV1cmZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0Nzk5OTYsImV4cCI6MjA4ODA1NTk5Nn0.rAf_9W8o28sfniOKeeD6gVUBrNbrZtmQ2YyL0BW5HZs';
 
 async function supaFetch(path, opts = {}) {
-  const res = await fetch(SUPA_URL + '/rest/v1/' + path, {
-    ...opts,
-    headers: {
-      'apikey': SUPA_KEY,
-      'Authorization': 'Bearer ' + SUPA_KEY,
-      'Content-Type': 'application/json',
-      'Prefer': opts.prefer || 'return=minimal',
-      ...(opts.headers || {})
+  try {
+    const res = await fetch(SUPA_URL + '/rest/v1/' + path, {
+      ...opts,
+      headers: {
+        'apikey': SUPA_KEY,
+        'Authorization': 'Bearer ' + SUPA_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': opts.prefer || 'return=minimal',
+        ...(opts.headers || {})
+      }
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      console.error('[Supabase error]', path, res.status, err);
+      if (res.status === 401 || res.status === 403) showSyncStatus('⚠️ Erro de autenticação', true);
+      return null;
     }
-  });
-  if (!res.ok) { const err = await res.text(); console.error('Supabase error:', err); return null; }
-  const txt = await res.text();
-  return txt ? JSON.parse(txt) : null;
+    const txt = await res.text();
+    return txt ? JSON.parse(txt) : null;
+  } catch(e) {
+    console.error('[Supabase network error]', e.message);
+    return null;
+  }
 }
 
 // ── LOCAL CACHE (fallback offline) ──
@@ -23484,62 +23494,37 @@ async function supaUpsertConfig(chave, valor) {
   } catch(e) { console.warn('Supabase offline:', e.message); }
 }
 
-// ── LOAD: cloud first, localStorage fallback ──
+// ── LOAD: cloud only ──
 async function loadAllStorage() {
-  // First load from localStorage for instant UI
+  showSyncStatus('🔄 Carregando...');
   try {
-    const sd = localStorage.getItem(SK_DATA);
-    if (sd) {
-      const p = JSON.parse(sd);
-      // Merge by nome to handle additions from any device
-      p.forEach(d => {
-        const existing = data.findIndex(x => x.nome === d.nome);
-        if (existing >= 0) Object.assign(data[existing], d);
-        else data.push(d);
-      });
-    }
-    const sm = localStorage.getItem(SK_MSG); if (sm) currentMsg = sm;
-    const sc = localStorage.getItem(SK_CHAMADA + etapaAtual) || localStorage.getItem(SK_CHAMADA); if (sc) chamadas = JSON.parse(sc);
-    const sa = localStorage.getItem(SK_AULAS + etapaAtual) || localStorage.getItem(SK_AULAS); if (sa) aulasData = JSON.parse(sa);
-    const sp = localStorage.getItem(SK_PHOTOS); if (sp) photosData = JSON.parse(sp);
-    const se = localStorage.getItem(SK_ETAPA); if (se) setEtapa(parseInt(se));
-  } catch(e) { console.warn('cloud load error:', e); }
-
-  // Then sync from cloud
-  try {
-    showSyncStatus('🔄 Sincronizando...');
     const rows = await supaFetch('config?select=chave,valor');
-    if (rows && rows.length > 0) {
-      const map = {};
-      rows.forEach(r => map[r.chave] = r.valor);
+    if (!rows) { showSyncStatus('📴 Offline', true); return; }
+    const map = {};
+    rows.forEach(r => map[r.chave] = r.valor);
 
-      if (map.alunos) {
+    if (map.alunos) {
+      try {
         const p = JSON.parse(map.alunos);
-        // Merge by nome: cloud wins, new alunos get added
         p.forEach(d => {
-          const existing = data.findIndex(x => x.nome === d.nome);
-          if (existing >= 0) Object.assign(data[existing], d);
-          else data.push(d);
+          const ex = data.findIndex(x => x.nome === d.nome);
+          if (ex >= 0) Object.assign(data[ex], d); else data.push(d);
         });
-        
-      }
-      if (map.mensagem) { currentMsg = map.mensagem;  }
-      const ck = 'chamadas_etapa' + etapaAtual;
-      const ak = 'aulas_etapa' + etapaAtual;
-      if (map[ck]) { chamadas = JSON.parse(map[ck]) }
-      if (map[ak]) { aulasData = JSON.parse(map[ak]) }
-      // fallback for old key format
-      if (!map[ck] && map.chamadas) { chamadas = JSON.parse(map.chamadas); }
-      if (!map[ak] && map.aulas) { aulasData = JSON.parse(map.aulas); }
-      if (map.fotos)    { photosData = JSON.parse(map.fotos);  try { localStorage.setItem(SK_PHOTOS,  map.fotos);   } catch(e) {} }
-      if (map.etapa)    { setEtapa(parseInt(map.etapa)); }
+      } catch(e) {}
     }
+    if (map.mensagem) currentMsg = map.mensagem;
+    const ck = 'chamadas_etapa' + etapaAtual;
+    const ak = 'aulas_etapa' + etapaAtual;
+    if (map[ck]) try { chamadas  = JSON.parse(map[ck]); } catch(e) {}
+    if (map[ak]) try { aulasData = JSON.parse(map[ak]); } catch(e) {}
+    if (map.fotos) try { photosData = JSON.parse(map.fotos); } catch(e) {}
+    if (map.etapa) setEtapa(parseInt(map.etapa));
     showSyncStatus('✅ Sincronizado', true);
     buildCards();
     buildChamadaList();
     if (document.getElementById('pg-calendario').classList.contains('active')) renderCalendar();
   } catch(e) {
-    console.warn('Supabase sync failed, using local data:', e);
+    console.warn('load error:', e);
     showSyncStatus('📴 Offline', true);
   }
 }
@@ -23559,27 +23544,34 @@ function startPolling() {
       const pck = 'chamadas_etapa' + etapaAtual;
       const pak = 'aulas_etapa' + etapaAtual;
       if (map[pck]) {
-        const novo = JSON.parse(map[pck]);
-        if (JSON.stringify(novo) !== JSON.stringify(chamadas)) { chamadas = novo; changed = true; }
+        try {
+          const novo = JSON.parse(map[pck]);
+          if (JSON.stringify(novo) !== JSON.stringify(chamadas)) { chamadas = novo; changed = true; }
+        } catch(e) {}
       }
       if (map[pak]) {
-        const novo = JSON.parse(map[pak]);
-        if (JSON.stringify(novo) !== JSON.stringify(aulasData)) { aulasData = novo; changed = true; }
+        try {
+          const novo = JSON.parse(map[pak]);
+          if (JSON.stringify(novo) !== JSON.stringify(aulasData)) { aulasData = novo; changed = true; }
+        } catch(e) {}
       }
       if (map.alunos) {
-        const p = JSON.parse(map.alunos);
-        if (JSON.stringify(p) !== JSON.stringify(data)) {
-          p.forEach(d => {
-            const existing = data.findIndex(x => x.nome === d.nome);
-            if (existing >= 0) Object.assign(data[existing], d);
-            else data.push(d);
-          });
-          changed = true;
-        }
+        try {
+          const p = JSON.parse(map.alunos);
+          if (JSON.stringify(p) !== JSON.stringify(data)) {
+            p.forEach(d => {
+              const ex = data.findIndex(x => x.nome === d.nome);
+              if (ex >= 0) Object.assign(data[ex], d); else data.push(d);
+            });
+            changed = true;
+          }
+        } catch(e) {}
       }
       if (map.fotos) {
-        const novo = JSON.parse(map.fotos);
-        if (JSON.stringify(novo) !== JSON.stringify(photosData)) { photosData = novo; changed = true; }
+        try {
+          const novo = JSON.parse(map.fotos);
+          if (JSON.stringify(novo) !== JSON.stringify(photosData)) { photosData = novo; changed = true; }
+        } catch(e) {}
       }
       if (changed) {
         buildCards();
@@ -23874,6 +23866,7 @@ function saveEdit() {
   d.mae  = document.getElementById('editMae').value.trim()  || d.mae;
   d.cmae = document.getElementById('editCmae').value.trim() || '-';
   d.obs  = document.getElementById('editObs').value.trim();
+  d.nasc = document.getElementById('editNasc').value || d.nasc || '';
   if (turmaVal) d.t = parseInt(turmaVal.value);
   if (editPhotoB64) { photosData[editIdx] = editPhotoB64; savePhotos(); }
   saveToStorage(); showToast('💾 Salvo!'); closeModal('editOverlay'); buildCards();
