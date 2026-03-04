@@ -23443,39 +23443,37 @@ function setEtapa(n) {
   const sufixos = ['','1ª','2ª'];
   document.getElementById('header-etapa').textContent = sufixos[n] + ' Etapa';
   document.querySelectorAll('.etapa-btn').forEach((b, i) => b.classList.toggle('active', i + 1 === n));
-  try { localStorage.setItem(SK_ETAPA, n); } catch(e) {}
   saveConfig('etapa', String(n));
-  // Reload etapa-specific data
-  const sc = localStorage.getItem(SK_CHAMADA + n);
-  chamadas = sc ? JSON.parse(sc) : {};
-  const sa = localStorage.getItem(SK_AULAS + n);
-  aulasData = sa ? JSON.parse(sa) : {};
+  // Reload etapa-specific data from Supabase
+  chamadas = {};
+  aulasData = {};
+  supaFetch('config?chave=eq.' + encodeURIComponent('chamadas_etapa' + n) + '&select=valor').then(rows => {
+    if (rows && rows.length > 0) { try { chamadas = JSON.parse(rows[0].valor); } catch(e) {} buildChamadaList(); }
+  });
+  supaFetch('config?chave=eq.' + encodeURIComponent('aulas_etapa' + n) + '&select=valor').then(rows => {
+    if (rows && rows.length > 0) { try { aulasData = JSON.parse(rows[0].valor); } catch(e) {} if (document.getElementById('pg-calendario').classList.contains('active')) renderCalendar(); }
+  });
   buildChamadaList();
   if (document.getElementById('pg-calendario').classList.contains('active')) renderCalendar();
 }
 
 // ── SAVE FUNCTIONS (local + cloud) ──
 function saveToStorage() {
-  try { localStorage.setItem(SK_DATA, JSON.stringify(data)); } catch(e) {}
   supaUpsertConfig('alunos', JSON.stringify(data));
 }
 function saveMsgStorage() {
-  try { localStorage.setItem(SK_MSG, currentMsg); } catch(e) {}
   supaUpsertConfig('mensagem', currentMsg);
 }
 function etapaKey(base) { return base + '_etapa' + etapaAtual; }
 function saveChamadas() {
   const k = etapaKey('chamadas');
-  try { localStorage.setItem(SK_CHAMADA + etapaAtual, JSON.stringify(chamadas)); } catch(e) {}
   supaUpsertConfig(k, JSON.stringify(chamadas));
 }
 function saveAulas() {
   const k = etapaKey('aulas');
-  try { localStorage.setItem(SK_AULAS + etapaAtual, JSON.stringify(aulasData)); } catch(e) {}
   supaUpsertConfig(k, JSON.stringify(aulasData));
 }
 function savePhotos() {
-  try { localStorage.setItem(SK_PHOTOS, JSON.stringify(photosData)); } catch(e) {}
   supaUpsertConfig('fotos', JSON.stringify(photosData));
 }
 
@@ -23487,7 +23485,6 @@ async function saveConfig(chave, valor) {
   });
 }
 async function supaUpsertConfig(chave, valor) {
-  try { localStorage.setItem('supa_' + chave, valor); } catch(e) {}
   try {
     const res = await fetch(SUPA_URL + '/rest/v1/config', {
       method: 'POST',
@@ -23504,28 +23501,9 @@ async function supaUpsertConfig(chave, valor) {
   } catch(e) { console.warn('Supabase offline:', e.message); }
 }
 
-// ── LOAD: cloud first, localStorage fallback ──
+// ── LOAD: Supabase only ──
 async function loadAllStorage() {
-  // First load from localStorage for instant UI
-  try {
-    const sd = localStorage.getItem(SK_DATA);
-    if (sd) {
-      const p = JSON.parse(sd);
-      // Merge by nome to handle additions from any device
-      p.forEach(d => {
-        const existing = data.findIndex(x => x.nome === d.nome);
-        if (existing >= 0) Object.assign(data[existing], d);
-        else data.push(d);
-      });
-    }
-    const sm = localStorage.getItem(SK_MSG); if (sm) currentMsg = sm;
-    const sc = localStorage.getItem(SK_CHAMADA + etapaAtual) || localStorage.getItem(SK_CHAMADA); if (sc) chamadas = JSON.parse(sc);
-    const sa = localStorage.getItem(SK_AULAS + etapaAtual) || localStorage.getItem(SK_AULAS); if (sa) aulasData = JSON.parse(sa);
-    const sp = localStorage.getItem(SK_PHOTOS); if (sp) photosData = JSON.parse(sp);
-    const se = localStorage.getItem(SK_ETAPA); if (se) setEtapa(parseInt(se));
-  } catch(e) { console.warn('localStorage:', e); }
-
-  // Then sync from cloud
+  // Load from Supabase
   try {
     showSyncStatus('🔄 Sincronizando...');
     const rows = await supaFetch('config?select=chave,valor');
@@ -23541,17 +23519,16 @@ async function loadAllStorage() {
           if (existing >= 0) Object.assign(data[existing], d);
           else data.push(d);
         });
-        try { localStorage.setItem(SK_DATA, map.alunos); } catch(e) {}
       }
-      if (map.mensagem) { currentMsg = map.mensagem; try { localStorage.setItem(SK_MSG, currentMsg); } catch(e) {} }
+      if (map.mensagem) { currentMsg = map.mensagem; }
       const ck = 'chamadas_etapa' + etapaAtual;
       const ak = 'aulas_etapa' + etapaAtual;
-      if (map[ck]) { chamadas = JSON.parse(map[ck]); try { localStorage.setItem(SK_CHAMADA + etapaAtual, map[ck]); } catch(e) {} }
-      if (map[ak]) { aulasData = JSON.parse(map[ak]); try { localStorage.setItem(SK_AULAS + etapaAtual, map[ak]); } catch(e) {} }
+      if (map[ck]) { chamadas = JSON.parse(map[ck]); }
+      if (map[ak]) { aulasData = JSON.parse(map[ak]); }
       // fallback for old key format
       if (!map[ck] && map.chamadas) { chamadas = JSON.parse(map.chamadas); }
       if (!map[ak] && map.aulas) { aulasData = JSON.parse(map.aulas); }
-      if (map.fotos)    { photosData = JSON.parse(map.fotos);  try { localStorage.setItem(SK_PHOTOS,  map.fotos);   } catch(e) {} }
+      if (map.fotos)    { photosData = JSON.parse(map.fotos); }
       if (map.etapa)    { setEtapa(parseInt(map.etapa)); }
     }
     showSyncStatus('✅ Sincronizado', true);
@@ -23580,11 +23557,11 @@ function startPolling() {
       const pak = 'aulas_etapa' + etapaAtual;
       if (map[pck]) {
         const novo = JSON.parse(map[pck]);
-        if (JSON.stringify(novo) !== JSON.stringify(chamadas)) { chamadas = novo; changed = true; try { localStorage.setItem(SK_CHAMADA + etapaAtual, map[pck]); } catch(e) {} }
+        if (JSON.stringify(novo) !== JSON.stringify(chamadas)) { chamadas = novo; changed = true; }
       }
       if (map[pak]) {
         const novo = JSON.parse(map[pak]);
-        if (JSON.stringify(novo) !== JSON.stringify(aulasData)) { aulasData = novo; changed = true; try { localStorage.setItem(SK_AULAS + etapaAtual, map[pak]); } catch(e) {} }
+        if (JSON.stringify(novo) !== JSON.stringify(aulasData)) { aulasData = novo; changed = true; }
       }
       if (map.alunos) {
         const p = JSON.parse(map.alunos);
@@ -23594,12 +23571,12 @@ function startPolling() {
             if (existing >= 0) Object.assign(data[existing], d);
             else data.push(d);
           });
-          changed = true; try { localStorage.setItem(SK_DATA, map.alunos); } catch(e) {}
+          changed = true;
         }
       }
       if (map.fotos) {
         const novo = JSON.parse(map.fotos);
-        if (JSON.stringify(novo) !== JSON.stringify(photosData)) { photosData = novo; changed = true; try { localStorage.setItem(SK_PHOTOS, map.fotos); } catch(e) {} }
+        if (JSON.stringify(novo) !== JSON.stringify(photosData)) { photosData = novo; changed = true; }
       }
       if (changed) {
         buildCards();
