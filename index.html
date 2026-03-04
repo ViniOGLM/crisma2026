@@ -516,8 +516,8 @@
 
 <footer>🙏 Crisma 2026 · 1ª Etapa · Catequistas Vitória &amp; Stefani</footer>
 
-<!-- BOTÃO ADMIN -->
-<div class="admin-btn" onclick="openAdminModal()" title="Administração">⚙️</div>
+<!-- BOTÃO ADMIN (shown only for admin) -->
+<div class="admin-btn" id="adminBtn" onclick="openAdminModal()" title="Administração" style="display:none">⚙️</div>
 
 <!-- MODAL: ADMINISTRAÇÃO -->
 <div class="modal-overlay" id="adminOverlay" onclick="overlayClick(event,'adminOverlay')">
@@ -592,7 +592,7 @@
         <div class="field-group"><label>Contato da Mãe</label><input type="text" id="editCmae" placeholder="(14) 9 9999-9999"></div>
       </div>
       <div class="field-row">
-        <div class="field-group"><label>Data de Nascimento</label><input type="date" id="editNasc"></div>
+        <div class="field-group"><label>Data de Nascimento</label><input type="text" id="editNasc" placeholder="DD/MM/AAAA" maxlength="10" oninput="this.value=this.value.replace(/[^0-9/]/g,'').replace(/^(\d{2})(?!\/)/,'$1/').replace(/^(\d{2}\/\d{2})(?!\/)/,'$1/')"></div>
         <div class="field-group"><label>Observações</label><input type="text" id="editObs" placeholder="Opcional"></div>
       </div>
     </div>
@@ -23546,11 +23546,15 @@ async function loadAllStorage() {
         cloudData.forEach(d => {
           const ex = data.findIndex(x => x.nome === d.nome);
           if (ex >= 0) {
-            // Always apply cloud data including _deletado
+            // Apply all cloud fields including _deletado
             Object.keys(d).forEach(k => { data[ex][k] = d[k]; });
+          } else if (!d._deletado) {
+            // New student added via app - add to local data
+            data.push(d);
           }
-          // Don't add unknown students from cloud to avoid duplication
         });
+        // Remove hardcoded students that were deleted in cloud
+        // (they exist locally but cloud marks them _deletado)
       } catch(e) {}
     }
     if (map.mensagem) currentMsg = map.mensagem;
@@ -23840,7 +23844,13 @@ function openEditModal(idx) {
   document.getElementById('editMae').value  = d.mae;
   document.getElementById('editCmae').value = d.cmae === '-' ? '' : d.cmae;
   document.getElementById('editObs').value  = d.obs;
-  document.getElementById('editNasc').value = d.nasc || '';
+  // Convert YYYY-MM-DD to DD/MM/AAAA for display
+  if (d.nasc && d.nasc.includes('-') && !d.nasc.includes('/')) {
+    const [ny, nm, nd] = d.nasc.split('-');
+    document.getElementById('editNasc').value = nd + '/' + nm + '/' + ny;
+  } else {
+    document.getElementById('editNasc').value = d.nasc || '';
+  }
   document.getElementById('editTurma' + d.t).checked = true;
   // Show current photo or number
   const prev = document.getElementById('editPhotoPreview');
@@ -24712,7 +24722,13 @@ function renderCalendar() {
     // Find birthday alunos for this day
     const aniversariantes = data.filter(d => {
       if (!d.nasc || d._deletado) return false;
-      const [ay, am, ad] = d.nasc.split('-');
+      // Support both DD/MM/AAAA and YYYY-MM-DD formats
+      let am, ad, ay;
+      if (d.nasc.includes('/')) {
+        [ad, am, ay] = d.nasc.split('/');
+      } else {
+        [ay, am, ad] = d.nasc.split('-');
+      }
       return parseInt(am) === calMonth + 1 && parseInt(ad) === day;
     });
     const hasAniv = aniversariantes.length > 0;
@@ -24798,13 +24814,7 @@ function deleteAula(key, i) {
 // ══════════════════════════════════════
 const ADMIN_PASSWORD = 'vitoria260622';
 
-function openAdminModal() {
-  document.getElementById('adminPwd').value = '';
-  document.getElementById('adminPwdError').style.display = 'none';
-  document.getElementById('adminActions').style.display = 'none';
-  openModal('adminOverlay');
-  setTimeout(() => document.getElementById('adminPwd').focus(), 100);
-}
+
 
 function checkAdminPwd() {
   const val = document.getElementById('adminPwd').value;
@@ -25137,11 +25147,15 @@ async function loadAllStorage() {
         cloudData.forEach(d => {
           const ex = data.findIndex(x => x.nome === d.nome);
           if (ex >= 0) {
-            // Always apply cloud data including _deletado
+            // Apply all cloud fields including _deletado
             Object.keys(d).forEach(k => { data[ex][k] = d[k]; });
+          } else if (!d._deletado) {
+            // New student added via app - add to local data
+            data.push(d);
           }
-          // Don't add unknown students from cloud to avoid duplication
         });
+        // Remove hardcoded students that were deleted in cloud
+        // (they exist locally but cloud marks them _deletado)
       } catch(e) {}
     }
     if (map.mensagem) currentMsg = map.mensagem;
@@ -25384,6 +25398,14 @@ function updateUserBadge() {
   const avatarEl = document.getElementById('user-avatar');
   if (nameEl)   nameEl.textContent   = name;
   if (avatarEl) avatarEl.textContent = name[0].toUpperCase();
+
+  const isAdmin = currentUser.role === 'admin';
+  // Show gear only for admin
+  const adminBtn = document.getElementById('adminBtn');
+  if (adminBtn) adminBtn.style.display = isAdmin ? '' : 'none';
+  // Show add/delete buttons only for admin
+  document.querySelectorAll('.btn-delete-card, .btn-novo-aluno, [onclick*="deletarAluno"], [onclick*="openNovoAluno"]')
+    .forEach(el => el.style.display = isAdmin ? '' : 'none');
 }
 
 async function checkSavedSession() {
