@@ -534,12 +534,15 @@
       </div>
       <div id="adminPwdError" style="font-size:.75rem;color:#ef4444;display:none">❌ Senha incorreta.</div>
 
-      <div class="admin-actions-hidden" id="adminActions">
-        <div class="admin-section-title">👥 Solicitações de Acesso</div>
-        <div id="pendingUsersList" style="font-size:.78rem;margin-bottom:4px;">Carregando...</div>
+      <div id="adminActions" style="display:none;flex-direction:column;gap:10px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+          <div class="admin-section-title" style="margin:0">👥 Solicitações de Acesso</div>
+          <button onclick="loadPendingUsers()" style="font-size:.65rem;padding:3px 8px;background:#f3f0e8;border:1px solid #d4c4a0;border-radius:6px;cursor:pointer;color:#7a6a52;">🔄 Atualizar</button>
+        </div>
+        <div id="pendingUsersList" style="font-size:.78rem;margin-bottom:4px;min-height:24px;"></div>
 
-        <div class="admin-section-title" style="margin-top:8px">👤 Usuários Aprovados</div>
-        <div id="approvedUsersList" style="font-size:.78rem;margin-bottom:4px;">Carregando...</div>
+        <div class="admin-section-title" style="margin-top:10px;margin-bottom:4px">👤 Usuários Aprovados</div>
+        <div id="approvedUsersList" style="font-size:.78rem;margin-bottom:4px;min-height:24px;"></div>
 
         <div class="admin-section-title" style="margin-top:8px">⚠️ Zona de Perigo</div>
         <button class="admin-action-btn danger" onclick="resetarTudo()">
@@ -24765,7 +24768,7 @@ const ADMIN_PASSWORD = 'vitoria260622';
 function openAdminModal() {
   document.getElementById('adminPwd').value = '';
   document.getElementById('adminPwdError').style.display = 'none';
-  document.getElementById('adminActions').classList.remove('unlocked');
+  document.getElementById('adminActions').style.display = 'none';
   openModal('adminOverlay');
   setTimeout(() => document.getElementById('adminPwd').focus(), 100);
 }
@@ -24775,7 +24778,7 @@ function checkAdminPwd() {
   if (val === ADMIN_PASSWORD) {
     document.getElementById('adminPwdError').style.display = 'none';
     document.getElementById('adminPwd').style.borderColor = '#22c55e';
-    document.getElementById('adminActions').classList.add('unlocked');
+    document.getElementById('adminActions').style.display = 'flex';
     loadPendingUsers();
   } else {
     document.getElementById('adminPwdError').style.display = 'block';
@@ -24788,7 +24791,7 @@ function openAdminModal() {
   document.getElementById('adminPwd').value = '';
   document.getElementById('adminPwdError').style.display = 'none';
   document.getElementById('adminPwd').style.borderColor = '';
-  document.getElementById('adminActions').classList.remove('unlocked');
+  document.getElementById('adminActions').style.display = 'none';
   openModal('adminOverlay');
   setTimeout(() => document.getElementById('adminPwd').focus(), 150);
 }
