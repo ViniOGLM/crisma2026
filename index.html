@@ -714,7 +714,7 @@
           <input id="loginSenha" type="password" placeholder="Sua senha" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #e5d5b5;border-radius:10px;font-size:.9rem;outline:none;" onkeydown="if(event.key==='Enter') fazerLogin()">
         </div>
         <div id="loginErro" style="color:#dc2626;font-size:.75rem;margin-bottom:10px;display:none;background:#fef2f2;border-radius:8px;padding:8px 12px;"></div>
-        <button onclick="fazerLogin()" style="width:100%;padding:12px;background:linear-gradient(135deg,#7c3aed,#4a3217);color:white;border:none;border-radius:10px;font-size:.9rem;font-weight:700;cursor:pointer;">Entrar</button>
+        <button id="btnEntrar" onclick="fazerLogin()" style="width:100%;padding:12px;background:linear-gradient(135deg,#7c3aed,#4a3217);color:white;border:none;border-radius:10px;font-size:.9rem;font-weight:700;cursor:pointer;">Entrar</button>
       </div>
       <!-- CADASTRO -->
       <div id="authCadastro" style="display:none;">
@@ -732,7 +732,7 @@
         </div>
         <div id="cadErro" style="color:#dc2626;font-size:.75rem;margin-bottom:10px;display:none;background:#fef2f2;border-radius:8px;padding:8px 12px;"></div>
         <div id="cadOk" style="color:#15803d;font-size:.75rem;margin-bottom:10px;display:none;background:#f0fdf4;border-radius:8px;padding:8px 12px;"></div>
-        <button onclick="solicitarCadastro()" style="width:100%;padding:12px;background:linear-gradient(135deg,#7c3aed,#4a3217);color:white;border:none;border-radius:10px;font-size:.9rem;font-weight:700;cursor:pointer;">Solicitar Acesso</button>
+        <button id="btnSolicitar" onclick="solicitarCadastro()" style="width:100%;padding:12px;background:linear-gradient(135deg,#7c3aed,#4a3217);color:white;border:none;border-radius:10px;font-size:.9rem;font-weight:700;cursor:pointer;">Solicitar Acesso</button>
         <div style="font-size:.68rem;color:#a89070;text-align:center;margin-top:10px;">O administrador precisará aprovar seu acesso.</div>
       </div>
     </div>
@@ -25133,40 +25133,60 @@ function showAuthTab(tab) {
   document.getElementById('tabCadastro').style.color      = tab === 'cadastro' ? 'white'   : '#7c3aed';
 }
 
+async function supaGetConfig(chave) {
+  try {
+    const url = SUPA_URL + '/rest/v1/config?chave=eq.' + encodeURIComponent(chave) + '&select=chave,valor';
+    const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Accept': 'application/json' } });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch(e) { return null; }
+}
+
+async function supaGetAllUsers() {
+  try {
+    const url = SUPA_URL + '/rest/v1/config?chave=like.user_%&select=chave,valor';
+    const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Accept': 'application/json' } });
+    if (!res.ok) return [];
+    return await res.json();
+  } catch(e) { return []; }
+}
+
+async function supaDeleteConfig(chave) {
+  try {
+    await fetch(SUPA_URL + '/rest/v1/config?chave=eq.' + encodeURIComponent(chave), {
+      method: 'DELETE',
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+    });
+  } catch(e) {}
+}
+
 async function fazerLogin() {
   const email = document.getElementById('loginEmail').value.trim().toLowerCase();
   const senha = document.getElementById('loginSenha').value;
   const errEl = document.getElementById('loginErro');
+  const btn   = document.getElementById('btnEntrar');
   errEl.style.display = 'none';
-
-  // Admin hardcoded
-  if (email === ADMIN_EMAIL && senha === ADMIN_PASS) {
-    currentUser = { email, nome: 'Admin', role: 'admin' };
-    try { localStorage.setItem('crUser', JSON.stringify(currentUser)); } catch(e) {}
-    hideAuthOverlay();
-    return;
-  }
 
   if (!email || !senha) { errEl.textContent = 'Preencha e-mail e senha.'; errEl.style.display = ''; return; }
 
-  // Check Supabase users table
-  try {
-    const rows = await supaFetch('config?chave=eq.' + encodeURIComponent('user_' + email), { headers: { 'Prefer': 'return=representation' } });
-    if (!rows || rows.length === 0) { errEl.textContent = 'Usuário não encontrado. Crie uma conta.'; errEl.style.display = ''; return; }
-    const u = JSON.parse(rows[0].valor);
-    if (u.senha !== btoa(senha)) { errEl.textContent = 'Senha incorreta.'; errEl.style.display = ''; return; }
-    if (u.status === 'pendente') {
-      document.getElementById('authOverlay').style.display = 'none';
-      document.getElementById('pendingOverlay').style.display = 'flex';
-      return;
-    }
-    if (u.status !== 'aprovado') { errEl.textContent = 'Acesso negado.'; errEl.style.display = ''; return; }
-    currentUser = { email, nome: u.nome, role: 'user' };
+  if (email === ADMIN_EMAIL && senha === ADMIN_PASS) {
+    currentUser = { email, nome: 'Admin', role: 'admin' };
     try { localStorage.setItem('crUser', JSON.stringify(currentUser)); } catch(e) {}
-    hideAuthOverlay();
-  } catch(e) {
-    errEl.textContent = 'Erro de conexão. Tente novamente.'; errEl.style.display = '';
+    hideAuthOverlay(); return;
   }
+
+  btn.textContent = 'Verificando...'; btn.disabled = true;
+  const rows = await supaGetConfig('user_' + email);
+  btn.textContent = 'Entrar'; btn.disabled = false;
+
+  if (!rows || rows.length === 0) { errEl.textContent = 'Usuário não encontrado. Crie uma conta.'; errEl.style.display = ''; return; }
+  let u; try { u = JSON.parse(rows[0].valor); } catch(e) { errEl.textContent = 'Erro nos dados. Contate o admin.'; errEl.style.display = ''; return; }
+  if (u.senha !== btoa(senha)) { errEl.textContent = 'Senha incorreta.'; errEl.style.display = ''; return; }
+  if (u.status === 'pendente') { document.getElementById('authOverlay').style.display = 'none'; document.getElementById('pendingOverlay').style.display = 'flex'; return; }
+  if (u.status !== 'aprovado') { errEl.textContent = 'Acesso negado.'; errEl.style.display = ''; return; }
+  currentUser = { email, nome: u.nome, role: 'user' };
+  try { localStorage.setItem('crUser', JSON.stringify(currentUser)); } catch(e) {}
+  hideAuthOverlay();
 }
 
 async function solicitarCadastro() {
@@ -25175,16 +25195,27 @@ async function solicitarCadastro() {
   const senha = document.getElementById('cadSenha').value;
   const errEl = document.getElementById('cadErro');
   const okEl  = document.getElementById('cadOk');
+  const btn   = document.getElementById('btnSolicitar');
   errEl.style.display = 'none'; okEl.style.display = 'none';
 
-  if (!nome || !email || !senha) { errEl.textContent = 'Preencha todos os campos.'; errEl.style.display = ''; return; }
-  if (senha.length < 6) { errEl.textContent = 'Senha deve ter pelo menos 6 caracteres.'; errEl.style.display = ''; return; }
+  if (!nome)  { errEl.textContent = 'Informe seu nome.'; errEl.style.display = ''; return; }
+  if (!email || !email.includes('@')) { errEl.textContent = 'Informe um e-mail válido.'; errEl.style.display = ''; return; }
+  if (!senha || senha.length < 6) { errEl.textContent = 'Senha deve ter pelo menos 6 caracteres.'; errEl.style.display = ''; return; }
 
+  btn.textContent = 'Enviando...'; btn.disabled = true;
   const chave = 'user_' + email;
   const valor = JSON.stringify({ nome, email, senha: btoa(senha), status: 'pendente', criadoEm: new Date().toISOString() });
-  await supaUpsertConfig(chave, valor);
-  okEl.textContent = '✅ Solicitação enviada! Aguarde aprovação do administrador.';
-  okEl.style.display = '';
+  const ok = await supaUpsertConfig(chave, valor);
+  btn.textContent = 'Solicitar Acesso'; btn.disabled = false;
+  if (ok !== null) {
+    okEl.textContent = '✅ Solicitação enviada! Aguarde aprovação do administrador.';
+    okEl.style.display = '';
+    document.getElementById('cadNome').value = '';
+    document.getElementById('cadEmail').value = '';
+    document.getElementById('cadSenha').value = '';
+  } else {
+    errEl.textContent = 'Erro ao enviar. Verifique sua internet.'; errEl.style.display = '';
+  }
 }
 
 function logoutUser() {
@@ -25204,60 +25235,50 @@ async function checkSavedSession() {
     const saved = localStorage.getItem('crUser');
     if (saved) {
       const u = JSON.parse(saved);
-      // Re-verify non-admin users
       if (u.email === ADMIN_EMAIL) { currentUser = u; hideAuthOverlay(); return; }
-      const rows = await supaFetch('config?chave=eq.' + encodeURIComponent('user_' + u.email));
+      const rows = await supaGetConfig('user_' + u.email);
       if (rows && rows.length > 0) {
         const ud = JSON.parse(rows[0].valor);
         if (ud.status === 'aprovado') { currentUser = u; hideAuthOverlay(); return; }
-        if (ud.status === 'pendente') {
-          document.getElementById('authOverlay').style.display = 'none';
-          document.getElementById('pendingOverlay').style.display = 'flex';
-          return;
-        }
+        if (ud.status === 'pendente') { document.getElementById('authOverlay').style.display = 'none'; document.getElementById('pendingOverlay').style.display = 'flex'; return; }
       }
     }
   } catch(e) {}
-  // Show login
   document.getElementById('authOverlay').style.display = 'flex';
 }
 
 async function loadPendingUsers() {
   const el = document.getElementById('pendingUsersList');
   if (!el) return;
-  try {
-    const rows = await supaFetch('config?chave=like.user_%&select=chave,valor');
-    const pending = (rows || []).map(r => JSON.parse(r.valor)).filter(u => u.status === 'pendente');
-    if (pending.length === 0) { el.innerHTML = '<div style="color:#7a6a52;font-style:italic;">Nenhuma solicitação pendente.</div>'; return; }
-    el.innerHTML = pending.map(u =>
-      '<div style="display:flex;align-items:center;gap:8px;padding:8px;background:#f9f5ee;border-radius:8px;margin-bottom:6px;">' +
-        '<div style="flex:1"><div style="font-weight:700;">' + u.nome + '</div><div style="font-size:.68rem;color:#7a6a52;">' + u.email + '</div></div>' +
-        '<button onclick="aprovarUsuario('' + u.email + '')" style="padding:5px 12px;background:#15803d;color:white;border:none;border-radius:7px;font-weight:700;font-size:.72rem;cursor:pointer;">✅ Aprovar</button>' +
-        '<button onclick="recusarUsuario('' + u.email + '')" style="padding:5px 12px;background:#dc2626;color:white;border:none;border-radius:7px;font-weight:700;font-size:.72rem;cursor:pointer;">✗</button>' +
-      '</div>'
-    ).join('');
-  } catch(e) { el.textContent = 'Erro ao carregar.'; }
+  el.innerHTML = '<div style="color:#7a6a52;">Carregando...</div>';
+  const rows = await supaGetAllUsers();
+  const pending = rows.map(r => { try { return JSON.parse(r.valor); } catch(e) { return null; } }).filter(u => u && u.status === 'pendente');
+  if (pending.length === 0) { el.innerHTML = '<div style="color:#7a6a52;font-style:italic;">Nenhuma solicitação pendente.</div>'; return; }
+  el.innerHTML = pending.map(u =>
+    '<div style="display:flex;align-items:center;gap:8px;padding:8px;background:#f9f5ee;border-radius:8px;margin-bottom:6px;">' +
+      '<div style="flex:1"><div style="font-weight:700;">' + u.nome + '</div><div style="font-size:.68rem;color:#7a6a52;">' + u.email + '</div></div>' +
+      '<button onclick="aprovarUsuario('' + u.email + '')" style="padding:5px 10px;background:#15803d;color:white;border:none;border-radius:7px;font-weight:700;font-size:.72rem;cursor:pointer;">✅ Aprovar</button>' +
+      '<button onclick="recusarUsuario('' + u.email + '')" style="padding:5px 10px;background:#dc2626;color:white;border:none;border-radius:7px;font-weight:700;font-size:.72rem;cursor:pointer;">✗ Recusar</button>' +
+    '</div>'
+  ).join('');
 }
 
 async function aprovarUsuario(email) {
-  const chave = 'user_' + email;
-  const rows = await supaFetch('config?chave=eq.' + encodeURIComponent(chave));
+  const rows = await supaGetConfig('user_' + email);
   if (!rows || rows.length === 0) return;
   const u = JSON.parse(rows[0].valor);
   u.status = 'aprovado';
-  await supaUpsertConfig(chave, JSON.stringify(u));
-  showToast('✅ ' + email + ' aprovado!');
+  await supaUpsertConfig('user_' + email, JSON.stringify(u));
+  showToast('✅ ' + u.nome + ' aprovado!');
   loadPendingUsers();
 }
 
 async function recusarUsuario(email) {
-  await supaFetch('config?chave=eq.' + encodeURIComponent('user_' + email), { method: 'DELETE' });
+  await supaDeleteConfig('user_' + email);
   showToast('🗑️ Solicitação recusada.');
   loadPendingUsers();
 }
 
-// Show pending users when admin unlocks panel
-const _origCheckAdminPwd = typeof checkAdminPwd !== 'undefined' ? checkAdminPwd : null;
 
 // ── INIT ──
 // Set default date/time for chamada
