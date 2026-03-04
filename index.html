@@ -307,17 +307,6 @@
 <meta name="apple-mobile-web-app-title" content="Crisma 2026">
 </head>
 <body>
-<div id="dbg" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#1a1a1a;color:#00ff00;font-size:10px;padding:6px;z-index:99999;max-height:120px;overflow-y:auto;font-family:monospace;"></div>
-<script>
-window.onerror = function(msg, src, line) {
-  var d = document.getElementById('dbg');
-  if(d) { d.style.display='block'; d.innerHTML += '<b style="color:red">ERR:</b> ' + msg + ' (line ' + line + ')<br>'; }
-};
-function dbg(msg) {
-  var d = document.getElementById('dbg');
-  if(d) { d.style.display='block'; d.innerHTML += msg + '<br>'; }
-}
-</script>
 
 <!-- HEADER -->
 <div class="header">
@@ -25188,27 +25177,17 @@ async function fazerLogin() {
   const errEl = document.getElementById('loginErro');
   const btn   = document.getElementById('btnEntrar');
   errEl.style.display = 'none';
-
-  dbg('fazerLogin called: ' + email);
   if (!email || !senha) { errEl.textContent = 'Preencha e-mail e senha.'; errEl.style.display = ''; return; }
-
-  dbg('checking admin: ' + (email === ADMIN_EMAIL) + ' pass: ' + (senha === ADMIN_PASS));
   if (email === ADMIN_EMAIL && senha === ADMIN_PASS) {
-    dbg('admin match - setting user');
     currentUser = { email, nome: 'Admin', role: 'admin' };
-    try { localStorage.setItem('crUser', JSON.stringify(currentUser)); } catch(e) { dbg('localStorage err: ' + e); }
-    dbg('calling hideAuthOverlay');
-    try { hideAuthOverlay(); } catch(e) { dbg('hideAuth err: ' + e); }
-    dbg('done');
+    try { localStorage.setItem('crUser', JSON.stringify(currentUser)); } catch(e) {}
+    hideAuthOverlay();
     return;
   }
 
   btn.textContent = 'Verificando...'; btn.disabled = true;
-  errEl.textContent = 'Conectando ao servidor...'; errEl.style.display = ''; errEl.style.color = '#7c3aed';
   const rows = await supaGetConfig('user_' + email);
   btn.textContent = 'Entrar'; btn.disabled = false;
-  errEl.style.color = '#dc2626';
-
   if (rows === null) { errEl.textContent = '❌ Erro de conexão com o servidor. Verifique sua internet.'; errEl.style.display = ''; return; }
   if (!rows || rows.length === 0) { errEl.textContent = 'Usuário não encontrado. Crie uma conta primeiro.'; errEl.style.display = ''; return; }
   let u; try { u = JSON.parse(rows[0].valor); } catch(e) { errEl.textContent = 'Erro nos dados: ' + e.message; errEl.style.display = ''; return; }
@@ -25239,7 +25218,6 @@ async function solicitarCadastro() {
   const valor = JSON.stringify({ nome, email, senha: btoa(senha), status: 'pendente', criadoEm: new Date().toISOString() });
   const ok = await supaUpsertConfig(chave, valor);
   btn.textContent = 'Solicitar Acesso'; btn.disabled = false;
-  errEl.style.display = 'none';
   if (ok !== null) {
     okEl.textContent = '✅ Solicitação enviada! Aguarde aprovação do administrador.';
     okEl.style.display = '';
@@ -25259,13 +25237,10 @@ function logoutUser() {
 }
 
 function hideAuthOverlay() {
-  dbg('hideAuthOverlay running');
   var a = document.getElementById('authOverlay');
   var p = document.getElementById('pendingOverlay');
-  dbg('authOverlay el: ' + (a ? 'found' : 'NULL'));
   if (a) a.style.display = 'none';
   if (p) p.style.display = 'none';
-  dbg('overlays hidden');
 }
 
 async function checkSavedSession() {
