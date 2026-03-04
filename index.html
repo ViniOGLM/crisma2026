@@ -25194,9 +25194,13 @@ async function fazerLogin() {
 
   dbg('checking admin: ' + (email === ADMIN_EMAIL) + ' pass: ' + (senha === ADMIN_PASS));
   if (email === ADMIN_EMAIL && senha === ADMIN_PASS) {
+    dbg('admin match - setting user');
     currentUser = { email, nome: 'Admin', role: 'admin' };
-    try { localStorage.setItem('crUser', JSON.stringify(currentUser)); } catch(e) {}
-    hideAuthOverlay(); return;
+    try { localStorage.setItem('crUser', JSON.stringify(currentUser)); } catch(e) { dbg('localStorage err: ' + e); }
+    dbg('calling hideAuthOverlay');
+    try { hideAuthOverlay(); } catch(e) { dbg('hideAuth err: ' + e); }
+    dbg('done');
+    return;
   }
 
   btn.textContent = 'Verificando...'; btn.disabled = true;
@@ -25255,8 +25259,13 @@ function logoutUser() {
 }
 
 function hideAuthOverlay() {
-  document.getElementById('authOverlay').style.display = 'none';
-  document.getElementById('pendingOverlay').style.display = 'none';
+  dbg('hideAuthOverlay running');
+  var a = document.getElementById('authOverlay');
+  var p = document.getElementById('pendingOverlay');
+  dbg('authOverlay el: ' + (a ? 'found' : 'NULL'));
+  if (a) a.style.display = 'none';
+  if (p) p.style.display = 'none';
+  dbg('overlays hidden');
 }
 
 async function checkSavedSession() {
