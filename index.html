@@ -23481,6 +23481,7 @@ async function saveConfig(chave, valor) {
   });
 }
 async function supaUpsertConfig(chave, valor) {
+  // Now that chave has UNIQUE constraint, merge-duplicates works correctly
   try {
     const res = await fetch(SUPA_URL + '/rest/v1/config', {
       method: 'POST',
@@ -23492,19 +23493,27 @@ async function supaUpsertConfig(chave, valor) {
       },
       body: JSON.stringify({ chave, valor })
     });
-    if (!res.ok) console.warn('Supabase error [' + chave + ']:', await res.text());
-    else console.log('%cSupa saved: ' + chave, 'color:green');
-  } catch(e) { console.warn('Supabase offline:', e.message); }
+    if (!res.ok) {
+      const err = await res.text();
+      console.warn('[upsert error]', chave, res.status, err);
+      return null;
+    }
+    return true;
+  } catch(e) {
+    console.warn('[upsert exception]', e.message);
+    return null;
+  }
 }
 
 // ── LOAD: cloud only ──
 async function loadAllStorage() {
   showSyncStatus('🔄 Carregando...');
   try {
-    const rows = await supaFetch('config?select=chave,valor');
+    const rows = await supaFetch('config?select=chave,valor&order=id.desc');
     if (!rows) { showSyncStatus('📴 Offline', true); return; }
     const map = {};
-    rows.forEach(r => map[r.chave] = r.valor);
+    // Build map taking first row per chave (latest, since ordered desc)
+    rows.forEach(r => { if (!(r.chave in map)) map[r.chave] = r.valor; });
 
     if (map.alunos) {
       try {
@@ -23547,10 +23556,10 @@ function startPolling() {
     const pg = document.querySelector('.page.active');
     if (pg && pg.id === 'pg-chamada') return;
     try {
-      const rows = await supaFetch('config?select=chave,valor');
+      const rows = await supaFetch('config?select=chave,valor&order=id.desc');
       if (!rows) return;
       const map = {};
-      rows.forEach(r => map[r.chave] = r.valor);
+      rows.forEach(r => { if (!(r.chave in map)) map[r.chave] = r.valor; });
       let changed = false;
       const pck = 'chamadas_etapa' + etapaAtual;
       const pak = 'aulas_etapa' + etapaAtual;
@@ -25094,7 +25103,8 @@ async function loadAllStorage() {
     const rows = await supaFetch('config?select=chave,valor');
     if (!rows) { showSyncStatus('📴 Offline', true); return; }
     const map = {};
-    rows.forEach(r => map[r.chave] = r.valor);
+    // Build map taking first row per chave (latest, since ordered desc)
+    rows.forEach(r => { if (!(r.chave in map)) map[r.chave] = r.valor; });
 
     if (map.alunos) {
       try {
@@ -25136,10 +25146,10 @@ function startPolling() {
     const pg = document.querySelector('.page.active');
     if (pg && pg.id === 'pg-chamada') return;
     try {
-      const rows = await supaFetch('config?select=chave,valor');
+      const rows = await supaFetch('config?select=chave,valor&order=id.desc');
       if (!rows) return;
       const map = {};
-      rows.forEach(r => map[r.chave] = r.valor);
+      rows.forEach(r => { if (!(r.chave in map)) map[r.chave] = r.valor; });
       let changed = false;
       const pck = 'chamadas_etapa' + etapaAtual;
       const pak = 'aulas_etapa' + etapaAtual;
@@ -25208,7 +25218,8 @@ function showAuthTab(tab) {
 
 async function supaGetConfig(chave) {
   try {
-    const url = SUPA_URL + '/rest/v1/config?chave=eq.' + encodeURIComponent(chave) + '&select=chave,valor';
+    // order by id desc to get latest row if duplicates exist
+    const url = SUPA_URL + '/rest/v1/config?chave=eq.' + encodeURIComponent(chave) + '&select=chave,valor&order=id.desc&limit=1';
     const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Accept': 'application/json' } });
     if (!res.ok) return null;
     return await res.json();
@@ -25224,10 +25235,16 @@ async function supaGetAllUsers() {
     if (!res.ok) return [];
     const rows = await res.json();
     // Filter for any key that looks like a user entry
+    // Deduplicate: keep only latest row per chave (rows ordered desc by id)
+    const seen = new Set();
     return rows.filter(r => {
       const c = r.chave || '';
-      return c.startsWith('usr_') || c.startsWith('user_') || 
-             c.startsWith('usuário_') || c.startsWith('usuario_');
+      const isUser = c.startsWith('usr_') || c.startsWith('user_') || 
+                     c.startsWith('usuário_') || c.startsWith('usuario_');
+      if (!isUser) return false;
+      if (seen.has(c)) return false;
+      seen.add(c);
+      return true;
     });
   } catch(e) { return []; }
 }
@@ -25449,14 +25466,20 @@ async function loadPendingUsers() {
 
 
 async function aprovarUsuario(chave) {
-  // chave is the FULL DB key passed directly e.g. 'usr_vitoria' or 'usuário_vitoria'
+  // chave is the FULL DB key e.g. 'usr_vitoria' or 'usuário_vitoria'
+  showToast('⏳ Aprovando...');
   const rows = await supaGetConfig(chave);
-  if (!rows || rows.length === 0) { showToast('❌ Não encontrado: ' + chave); return; }
-  const u = JSON.parse(rows[0].valor);
+  if (!rows || rows.length === 0) { showToast('❌ Não encontrado no banco: ' + chave); return; }
+  let u;
+  try { u = JSON.parse(rows[0].valor); } catch(e) { showToast('❌ Erro ao ler dados.'); return; }
   u.status = 'aprovado';
   const ok = await supaUpsertConfig(chave, JSON.stringify(u));
-  showToast(ok !== null ? '✅ @' + (u.username || chave) + ' aprovado!' : '❌ Erro ao aprovar.');
-  loadPendingUsers();
+  if (ok !== null) {
+    showToast('✅ @' + (u.username || chave) + ' aprovado! Pode fazer login.');
+  } else {
+    showToast('❌ Falha ao salvar. Verifique conexão.');
+  }
+  await loadPendingUsers();
 }
 
 async function recusarUsuario(chave) {
