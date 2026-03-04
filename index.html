@@ -529,7 +529,7 @@
     <div class="admin-modal-body">
       <div class="admin-section-title">🔒 Digite a senha para liberar as ações</div>
       <div class="admin-pwd-wrap">
-        <input type="password" id="adminPwd" placeholder="Senha de administração..." onkeydown="if(event.key==='Enter') checkAdminPwd()">
+        <input type="password" id="adminPwd" placeholder="Senha de administração..." autocomplete="off" onkeydown="if(event.key==='Enter') checkAdminPwd()">
         <button onclick="checkAdminPwd()">Entrar</button>
       </div>
       <div id="adminPwdError" style="font-size:.75rem;color:#ef4444;display:none">❌ Senha incorreta.</div>
@@ -25213,11 +25213,19 @@ async function supaGetConfig(chave) {
 }
 
 async function supaGetAllUsers() {
+  // Fetch all config rows and filter for user-like keys in JS
+  // (avoids issues with URL encoding of LIKE wildcards and Chrome translation of 'user_')
   try {
-    const url = SUPA_URL + '/rest/v1/config?chave=like.usr_%&select=chave,valor';
+    const url = SUPA_URL + '/rest/v1/config?select=chave,valor';
     const res = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Accept': 'application/json' } });
     if (!res.ok) return [];
-    return await res.json();
+    const rows = await res.json();
+    // Filter for any key that looks like a user entry
+    return rows.filter(r => {
+      const c = r.chave || '';
+      return c.startsWith('usr_') || c.startsWith('user_') || 
+             c.startsWith('usuário_') || c.startsWith('usuario_');
+    });
   } catch(e) { return []; }
 }
 
@@ -25250,6 +25258,9 @@ async function fazerLogin() {
 
   // Try username key first, then old email-based keys as fallback
   let rows = await supaGetConfig('usr_' + input);
+  if (!rows || rows.length === 0) rows = await supaGetConfig('user_' + input);
+  if (!rows || rows.length === 0) rows = await supaGetConfig('usuário_' + input);
+  if (!rows || rows.length === 0) rows = await supaGetConfig('usuario_' + input);
   if (!rows || rows.length === 0) rows = await supaGetConfig('usr_' + input + '@hotmail.com');
   if (!rows || rows.length === 0) rows = await supaGetConfig('usr_' + input + '@gmail.com');
 
@@ -25368,7 +25379,7 @@ async function loadPendingUsers() {
     try {
       const u = JSON.parse(r.valor);
       u._chave = r.chave; // e.g. 'usr_vitoria'
-      u._key   = r.chave.replace(/^usr_/, '').replace(/^user_/, ''); // just 'vitoria'
+      u._key   = r.chave.replace(/^usr_/, '').replace(/^user_/, '').replace(/^usu[aá]rio_/, '').replace(/^usuario_/, ''); // just 'vitoria'
       return u;
     } catch(e) { return null; }
   }).filter(Boolean);
@@ -25414,12 +25425,12 @@ async function loadPendingUsers() {
 async function aprovarUsuario(key) {
   // key is just the username part e.g. 'vitoria'
   // Try usr_ prefix first, then user_ for old accounts
+  // Try all possible prefixes (Chrome may have translated 'user_' to 'usuário_')
   let chave = 'usr_' + key;
   let rows = await supaGetConfig(chave);
-  if (!rows || rows.length === 0) {
-    chave = 'user_' + key;
-    rows = await supaGetConfig(chave);
-  }
+  if (!rows || rows.length === 0) { chave = 'user_' + key; rows = await supaGetConfig(chave); }
+  if (!rows || rows.length === 0) { chave = 'usuário_' + key; rows = await supaGetConfig(chave); }
+  if (!rows || rows.length === 0) { chave = 'usuario_' + key; rows = await supaGetConfig(chave); }
   if (!rows || rows.length === 0) { showToast('❌ Usuário não encontrado'); return; }
   const u = JSON.parse(rows[0].valor);
   u.status = 'aprovado';
@@ -25432,6 +25443,8 @@ async function recusarUsuario(key) {
   // Try usr_ first, then user_ for old accounts
   await supaDeleteConfig('usr_' + key);
   await supaDeleteConfig('user_' + key);
+  await supaDeleteConfig('usuário_' + key);
+  await supaDeleteConfig('usuario_' + key);
   showToast('🗑️ @' + key + ' removido.');
   loadPendingUsers();
 }
