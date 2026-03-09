@@ -426,6 +426,15 @@
 <div id="pg-chamada" class="page">
   <div class="chamada-toolbar">
     <div style="display:flex;align-items:center;gap:6px">
+      <label>Tipo:</label>
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:.82rem;font-weight:700;color:#15803d;background:#f0fdf4;border:1.5px solid #86efac;border-radius:20px;padding:4px 14px;">
+        <input type="radio" name="chamada-tipo" id="tipo-encontro" value="encontro" checked style="accent-color:#15803d" onchange="buildChamadaList()"> ⛪ Encontro
+      </label>
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:.82rem;font-weight:700;color:#7c3aed;background:#f3e8ff;border:1.5px solid #c4b5fd;border-radius:20px;padding:4px 14px;">
+        <input type="radio" name="chamada-tipo" id="tipo-missa" value="missa" style="accent-color:#7c3aed" onchange="buildChamadaList()"> 🙏 Missa
+      </label>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
       <label>Data:</label>
       <input type="date" id="chamada-data" onchange="buildChamadaList()">
     </div>
@@ -23928,7 +23937,18 @@ function setChamadaTurma(t) {
   buildChamadaList();
 }
 
-function getChamadaKey() { return document.getElementById('chamada-data').value; }
+function getChamadaTipo() {
+  const el = document.querySelector('input[name="chamada-tipo"]:checked');
+  return el ? el.value : 'encontro';
+}
+function getChamadaKey() {
+  const data = document.getElementById('chamada-data').value;
+  if (!data) return '';
+  return data + '_' + getChamadaTipo();
+}
+function getChamadaDateOnly() {
+  return document.getElementById('chamada-data').value;
+}
 
 function buildChamadaList() {
   const key = getChamadaKey();
@@ -23936,18 +23956,23 @@ function buildChamadaList() {
   const list = document.getElementById('chamada-list');
   list.innerHTML = '';
 
-  const dateStr = key ? new Date(key + 'T12:00:00').toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long', year:'numeric' }) : 'selecione uma data';
-  document.getElementById('chamada-titulo').textContent = '📋 Chamada — ' + dateStr;
+  const dateOnly = getChamadaDateOnly();
+  const tipo = getChamadaTipo();
+  const tipoLabel = tipo === 'missa' ? '🙏 Missa' : '⛪ Encontro';
+  const dateStr = dateOnly ? new Date(dateOnly + 'T12:00:00').toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long', year:'numeric' }) : 'selecione uma data';
+  document.getElementById('chamada-titulo').textContent = '📋 Chamada ' + tipoLabel + ' — ' + dateStr;
 
   // Filter strictly by selected turma
   const filtrados = data.filter(d => !d._deletado && (chamadaTurma === 'all' || d.t === chamadaTurma)).sort((a,b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 
   // Compute bimestre range for alertas (current bimestre = groups of 2 months)
-  const mesAtual = key ? parseInt(key.split('-')[1]) : new Date().getMonth() + 1;
+  const mesAtual = dateOnly ? parseInt(dateOnly.split('-')[1]) : new Date().getMonth() + 1;
+  const anoAtual = dateOnly ? dateOnly.split('-')[0] : new Date().getFullYear();
   const bimInicio = mesAtual <= 2 ? 1 : mesAtual <= 4 ? 3 : mesAtual <= 6 ? 5 : mesAtual <= 8 ? 7 : mesAtual <= 10 ? 9 : 11;
   const bimFim = bimInicio + 1;
-  const bimPrefix1 = (key ? key.split('-')[0] : new Date().getFullYear()) + '-' + String(bimInicio).padStart(2,'0');
-  const bimPrefix2 = (key ? key.split('-')[0] : new Date().getFullYear()) + '-' + String(bimFim).padStart(2,'0');
+  const bimPrefix1 = anoAtual + '-' + String(bimInicio).padStart(2,'0');
+  const bimPrefix2 = anoAtual + '-' + String(bimFim).padStart(2,'0');
+  // Count absences across both tipos for the bimestre
   const bimKeys = Object.keys(chamadas).filter(k => k.startsWith(bimPrefix1) || k.startsWith(bimPrefix2));
 
   filtrados.forEach(d => {
@@ -24111,7 +24136,11 @@ function openNovoAluno() {
 // ── DATE FORMAT ──
 function fmtDate(dateStr) {
   if (!dateStr) return '';
-  return new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR');
+  // Handle "2026-03-04_encontro" or "2026-03-04_missa" format
+  const parts = dateStr.split('_');
+  const datePart = parts[0];
+  const tipoEmoji = parts[1] === 'missa' ? ' 🙏' : parts[1] === 'encontro' ? ' ⛪' : '';
+  return new Date(datePart + 'T12:00:00').toLocaleDateString('pt-BR') + tipoEmoji;
 }
 
 // ── WORD (.docx) DOWNLOAD ──
@@ -24226,7 +24255,7 @@ function downloadBlob(blob, filename) {
 
 async function downloadChamadaHoje() {
   const key = getChamadaKey();
-  if (!key) { showToast('⚠️ Selecione uma data!', '#8b3a00'); return; }
+  if (!key || !getChamadaDateOnly()) { showToast('⚠️ Selecione uma data!', '#8b3a00'); return; }
   showToast('⏳ Gerando Word...');
   const blob = await buildDocxChamadaDia(key);
   downloadBlob(blob, 'chamada_' + key + '.docx');
@@ -24255,9 +24284,8 @@ function buildResumoAlunos(keys) {
 }
 
 async function downloadChamadaMes() {
-  const key = getChamadaKey();
-  if (!key) { showToast('⚠️ Selecione uma data!', '#8b3a00'); return; }
-  const [ano, mes] = key.split('-');
+  if (!getChamadaDateOnly()) { showToast('⚠️ Selecione uma data!', '#8b3a00'); return; }
+  const [ano, mes] = getChamadaDateOnly().split('-');
   const prefix = ano + '-' + mes;
   const keys = Object.keys(chamadas).filter(k => k.startsWith(prefix)).sort();
   if (keys.length === 0) { showToast('Nenhuma chamada neste mês.', '#8b3a00'); return; }
@@ -24350,9 +24378,8 @@ async function downloadChamadaMes() {
 }
 
 async function downloadChamadaAno() {
-  const key = getChamadaKey();
-  if (!key) { showToast('⚠️ Selecione uma data!', '#8b3a00'); return; }
-  const ano = key.split('-')[0];
+  if (!getChamadaDateOnly()) { showToast('⚠️ Selecione uma data!', '#8b3a00'); return; }
+  const ano = getChamadaDateOnly().split('-')[0];
   const keys = Object.keys(chamadas).filter(k => k.startsWith(ano)).sort();
   if (keys.length === 0) { showToast('Nenhuma chamada neste ano.', '#8b3a00'); return; }
   showToast('⏳ Gerando Word...');
