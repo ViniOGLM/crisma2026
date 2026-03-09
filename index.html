@@ -25309,7 +25309,13 @@ async function fazerLogin() {
   if (input === ADMIN_USER && senha === ADMIN_PASS) {
     currentUser = { username: ADMIN_USER, nome: 'Vini (Admin)', role: 'admin' };
     try { sessionStorage.setItem('crUser', JSON.stringify(currentUser)); } catch(e) {}
-    hideAuthOverlay(); updateUserBadge(); return;
+    hideAuthOverlay(); updateUserBadge();
+  // Load data if not yet loaded (first login this session)
+  if (!data || data.every(d => !d.turma && !d.t)) {
+    loadAllStorage();
+  } else {
+    buildCards();
+  } return;
   }
 
   btn.textContent = 'Verificando...'; btn.disabled = true;
@@ -25403,9 +25409,9 @@ function updateUserBadge() {
   // Show gear only for admin
   const adminBtn = document.getElementById('adminBtn');
   if (adminBtn) adminBtn.style.display = isAdmin ? '' : 'none';
-  // Show add/delete buttons only for admin
-  document.querySelectorAll('.btn-delete-card, .btn-novo-aluno, [onclick*="deletarAluno"], [onclick*="openNovoAluno"]')
-    .forEach(el => el.style.display = isAdmin ? '' : 'none');
+  // Add/delete available to ALL logged-in users - explicitly show
+  document.querySelectorAll('[onclick*="deletarAluno"], [onclick*="openNovoAluno"]')
+    .forEach(el => el.style.display = '');
 }
 
 async function checkSavedSession() {
